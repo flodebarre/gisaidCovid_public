@@ -1,0 +1,671 @@
+---
+title: "France on GISAID"
+author: "FD"
+date: 2021-07-21
+output: 
+  html_document: 
+      code_folding: hide
+      toc: TRUE
+      toc_float: TRUE
+---
+
+# Initializations
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, eval = FALSE, include = FALSE}
+# This is only for evaluation in the console, not for Rmd
+rm(list = ls()) 
+options(warn = 2) # Turn warnings into errors to trouble-check
+```
+
+```{r}
+# Colors 
+library(RColorBrewer)
+colsV <- rep(c(brewer.pal(12, "Paired"), brewer.pal(12, "Set3"), brewer.pal(9, "Set1")), 20)
+colsP <- brewer.pal(5, "Set1")
+names(colsP) <- c("autre", "HCL", "HMN", "IHU", "IPP")
+colsC <- c(brewer.pal(9, "Set1"), brewer.pal(6, "Set2"), brewer.pal(12, "Set3"))
+colsV2 <- brewer.pal(9, "Set3")
+
+cols <- brewer.pal(n = 3, name = "Dark2")
+
+```
+
+```{r}
+# Function to identify entries that are NA or empty
+is.NAempty <- function(x){
+  is.na(x) | x == ""
+}
+```
+
+# Load and clean data
+
+Data source: `metadata.tsv`, downloaded from [GISAID](https://www.gisaid.org). 
+
+Then, in console
+```
+grep "hCoV-19/France" metadata.tsv
+```
+to extract sequences from France (as country) only. The resulting file is stored in the `data/` folder. 
+
+Note: Oversea territories are referenced as independent on GISAID
+
+## Load data
+
+```{r loadData, results = 'hide'}
+dat <- read.csv("data/2021-07-20_France.tsv", sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+head(dat)
+names(dat) <- c("Virus.name", "Type", "Accession.ID", "Collection.date", "Location", "Additional.location.information", "Sequence.length", "Host", "Patient.age", "Gender", "Clade", "Pango.lineage", "Pangolin.version", "Variant", "AA.Substitutions", "Submission.date", "Is.reference", "Is.complete", "Is.high.coverage", "Is.low.coverage", "N.Content", "GC.Content")
+```
+
+There are `r nrow(dat)` lines in the dataset. 
+
+## Clean data
+
+Dates: full date, year-month and year
+
+```{r cleanDataDates, echo = TRUE, results = 'hide'}
+# Reformat dates
+
+# Table of the lengths of the different dates
+table(nchar(dat$Collection.date)) # There are incomplete dates
+table(nchar(dat$Submission.date))
+
+# Turn dates into date format, and put NA for incomplete dates
+getDate <- function(v){
+  out <- v
+  # Remove lines with incomplete date information
+  out[nchar(out) < 10] <- NA
+  base::as.Date(out)
+}
+
+dat$Collection.date.YMD <- getDate(dat$Collection.date)
+dat$Submission.date.YMD <- getDate(dat$Submission.date)
+
+# Extract month
+getYM <- function(v){
+  out <- v
+  # Remove lines with incomplete date information
+  out[nchar(out) < 7] <- NA
+  substr(out, 1, 7)
+}
+
+dat$Collection.date.YM <- getYM(dat$Collection.date)
+dat$Submission.date.YM <- getYM(dat$Submission.date)
+
+# Extract year
+getY <- function(v){
+  out <- v
+  # Remove lines with incomplete date information
+  out[nchar(out) < 4] <- NA
+  substr(out, 1, 4)
+}
+
+dat$Collection.date.Y <- getY(dat$Collection.date)
+dat$Submission.date.Y <- getY(dat$Submission.date)
+```
+
+Dates: get week numbers  
+(currently only done for 2021)
+
+```{r cleanDataWeeks}
+# NOTE: THIS IS ONLY FOR 2021 -- need to change method for 2020, or do it separately
+
+endDay <- max(dat$Submission.date.YMD)
+beginDay <- seq(base::as.Date("2021-01-04"), base::as.Date("2021-12-27"), by = 7)
+endDay <- seq(base::as.Date("2021-01-10"), base::as.Date("2022-01-02"), by = 7)
+weeks <- as.data.frame(cbind(weekBegin = beginDay, weekEnd = endDay, week = 1:52))
+
+
+# Assign weeks
+  # Initialize week numbers
+dat$Collection.week <- NA
+dat$Submission.week <- NA
+
+for(iw in weeks$week){
+  # Collection week
+  dat[which(base::as.Date(dat$Collection.date.YMD) >= base::as.Date(weeks[iw, "weekBegin"], origin = "1970-01-01") & base::as.Date(dat$Collection.date.YMD) <= base::as.Date(weeks[iw, "weekEnd"], origin = "1970-01-01")), "Collection.week"] <- iw
+  
+  # Submission week
+  dat[which(base::as.Date(dat$Submission.date.YMD) >= base::as.Date(weeks[iw, "weekBegin"], origin = "1970-01-01") & base::as.Date(dat$Submission.date.YMD) <= base::as.Date(weeks[iw, "weekEnd"], origin = "1970-01-01")), "Submission.week"] <- iw
+}
+```
+
+Difference between submission and collection dates
+
+```{r}
+dat$diffSubCol <- as.numeric(dat$Submission.date.YMD - dat$Collection.date.YMD)
+```
+
+Locations:  
+Try to get some uniformity automatically because some spellings differ
+
+```{r cleanDataLocations, echo = TRUE, results = 'hide'}
+# Extract locations
+# Reformat locations: 
+# 1) Remove spaces
+locs <- gsub(" ", "", dat$Location)
+# 2) Convert to upper case
+locs <- toupper(locs)
+# 3) Remove dashes
+locs <- gsub("-", "", locs)
+locs <- gsub("_", "", locs)
+# 4) Remove some accents
+#    A 
+for(char in c("À", "Â", "Ä")){
+  locs <- gsub(char, "A", locs)
+}
+#    E 
+for(char in c("È", "É", "Ê")){
+  locs <- gsub(char, "E", locs)
+}
+#    I 
+for(char in c("Î")){
+  locs <- gsub(char, "I", locs)
+}
+#    O 
+for(char in c("Ô")){
+  locs <- gsub(char, "O", locs)
+}
+
+# Split locations
+# Locations are presented as a single string, which we split
+locs <- strsplit(locs, "/")
+# The strings are of different lengths / precision; get length (number of geographic divisions)
+lenlocs <- sapply(locs, length)
+table(lenlocs)
+# Turn into matrix, filling with NAs
+# Source: https://stackoverflow.com/a/15201690
+mat <- as.data.frame(t(sapply(locs, "[", i = 1:max(lenlocs))))
+names(mat) <- c("continent", "country", "region", "div4", "div5")
+dat <- cbind(dat, mat)
+# Also add information about location precision
+dat <- cbind(dat, locationLength = lenlocs)
+names(dat)
+```
+
+Hosts
+
+```{r cleanDataHosts, echo = TRUE, results = 'hide'}
+# Uniformize notation
+dat[dat$Host == "human", "Host"] <- "Human"
+```
+
+## Flash
+
+Load Flash dates
+
+```{r}
+datesFlash <- read.csv("../gisaid_covid/data/datesFlash.csv", stringsAsFactors = FALSE, header = FALSE)
+names(datesFlash) <- c("FlashNb", "date", "date2", "week")
+datesFlash.all <- datesFlash
+# Remove Flash 1 and 2, which were not on a random sample
+datesFlash <- datesFlash[datesFlash$FlashNb >=3 , ]
+```
+
+
+# France 
+
+```{r}
+table(country = dat$country)
+# Keep only mainland France
+dat <- dat[dat$country == "FRANCE", ]
+```
+
+There are `r nrow(dat)` samples with location in France. 
+
+Get submitter information from Virus name
+
+```{r}
+ipp <- grep(dat$Virus.name, pattern = "IPP")
+hcl <- grep(dat$Virus.name, pattern = "HCL")
+ihu <- grep(dat$Virus.name, pattern = "IHU")
+hmn <- grep(dat$Virus.name, pattern = "HMN")
+
+
+dat$submitter <- rep("autre", nrow(dat))
+dat[ipp, "submitter"] <- "IPP"
+dat[hcl, "submitter"] <- "HCL"
+dat[ihu, "submitter"] <- "IHU"
+dat[hmn, "submitter"] <- "HMN"
+
+table(dat$submitter, useNA = "ifany")
+
+submitters <- sort(unique(dat$submitter))
+```
+
+
+### Sequence metadata 
+
+Dates
+
+-  The fraction of samples with missing full day of collection is `r round(mean(is.na(dat$Collection.date.YMD)), 2)`  
+
+Distribution of samples with incomplete collection date information, by submitter  
+```{r}
+totSeq <- table(dat$submitter)
+tt <- table(dat[which(is.na(dat$Collection.date.YMD)), "submitter"])
+
+rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
+```
+
+Location 
+
+-  The fraction of samples with missing regional information is `r round(mean(is.na(dat$region)), 2)`
+
+Distribution of entries with incomplete location, by submitter  
+```{r}
+tt <- table(dat[which(is.na(dat$region)), "submitter"])
+
+rbind(missing_region = tt, tot_seq = totSeq[names(tt)])
+```
+
+Regions need to be standardized... 
+
+```{r}
+sort(unique(dat$region))
+```
+
+
+### Metadata on hosts
+
+```{r}
+# Hosts
+table(dat$Host)
+```
+
+Age  
+```{r}
+# Age
+dat[which(is.element(dat$Patient.age, c("unknown", "Unknown"))), "Patient.age"] <- NA
+
+# Convert to numeric values 
+# if contains characters -> NA
+dat$Patient.age <- suppressWarnings(as.numeric(dat$Patient.age))
+```
+
+The fraction of samples with missing or incorrect age information is `r round(mean(is.na(dat$Patient.age)), 2)`.
+
+Missing age by submitter  
+```{r}
+tt <- table(dat[which(is.na(dat$Patient.age)), "submitter"])
+rbind(missing_age = tt, tot_seq = totSeq[names(tt)])
+```
+
+Distribution of ages  
+```{r}
+par(las = 1)
+hist(dat$Patient.age, xlab = "Patient age", main = "Distribution of patient ages", breaks = seq(0, max(dat$Patient.age, na.rm = TRUE), by = 1), border = gray(1, 1), col = cols[1])
+```
+
+"Gender" information  
+```{r, results = 'hide'}
+unique(dat$Gender)
+# Clean
+dat[which(is.element(dat$Gender, c("unknown", "Unknown", "Femal", "Maleale"))), "Gender"] <- NA
+
+table(dat$Gender, useNA = "ifany")
+```
+
+
+```{r}
+# Distribution by submitter
+rbind(missing_age = table(dat[which(is.na(dat$Gender)), "submitter"]), tot_seq = table(dat$submitter))
+```
+
+### Virus
+
+
+```{r}
+# "Clade"                           "Pango.lineage"         
+# "Pangolin.version"                "Variant"                 
+# "AA.Substitutions"
+```
+
+Clades  
+```{r}
+table(dat$Clade, useNA = "ifany")
+```
+
+Pango lineage info is missing in a fraction `r round(mean(is.NAempty(dat$Pango.lineage)), 4)` of items. 
+
+Pangolin version  
+```{r}
+table(dat$Pangolin.version)
+```
+
+## Submissions 
+
+### By Platform
+
+```{r}
+tabFRsub <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subM = dat$Collection.date.YM), FUN = length)
+
+tabFRsub.month <- aggregate(dat$Virus.name, by = list(subM = dat$Collection.date.YM), FUN = length)
+
+
+par(mgp = c(3, 1, 0))
+par(mar = c(5, 5, 3, 1))
+x <- barplot(tabFRsub$x ~ tabFRsub$subID + tabFRsub$subM, col = colsP[1:(length(unique(tabFRsub$subID)))], border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", las = 2, 
+             main = "Nombre de séquences par producteur et mois de collecte")
+
+z <- tabFRsub[tabFRsub$subM == "2021-03", ]
+text(x = rep(x[length(x)-1], 5), y = cumsum(z$x) - z$x/2, labels = z$subID, adj = c(-0.7, 0.5), col = colsP, cex = 0.9) # pos 4 for left-justified
+par(xpd = TRUE)
+text(x = x, y = tabFRsub.month$x, labels = tabFRsub.month$x, cex = 0.8, adj = c(0.5, -0.5))
+legend("topleft", col = rev(colsP), legend = rev(names(colsP)), pch = 15, bty = "n")
+par(xpd = FALSE)
+```
+
+By platform, by week
+```{r, fig.height=10}
+# By collection week
+tabFRsub.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subweek = dat$Collection.week), FUN = length)
+names(tabFRsub.byweek)[3] <- "byCollectionDate"
+
+tabFRsubS.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subweek = dat$Submission.week), FUN = length)
+names(tabFRsubS.byweek)[3] <- "bySubmissionDate"
+
+seq.byWeek <- merge(tabFRsub.byweek, tabFRsubS.byweek, all = TRUE)
+ymax <- 6000
+
+seq.byWeek[is.na(seq.byWeek$byCollectionDate), "byCollectionDate"] <- 0
+seq.byWeek[is.na(seq.byWeek$bySubmissionDate), "bySubmissionDate"] <- 0
+
+par(mfrow = c(2, 1))
+themar <- c(3, 3.5, 2, 1)
+thetck <- -0.01
+themgp <- c(2.3, 0.3, 0)
+par(mar = themar, mgp = themgp, tck = thetck)
+
+x <- barplot(seq.byWeek$byCollectionDate ~ seq.byWeek$subID + seq.byWeek$subweek, col = colsP[1:(length(unique(tabFRsub$subID)))], border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", las = 1, 
+             main = "Par semaine de prélèvement", xaxs = "i", yaxs = "i", ylim = c(0, ymax))
+legend("topleft", col = rev(colsP), legend = rev(names(colsP)), pch = 15, bty = "n")
+
+stopifnot(length(x) == length(unique(seq.byWeek$subweek))) # Make sure that lengths match
+
+xw <- data.frame(cbind(x = x, week = unique(seq.byWeek$subweek)))
+ii <- is.element(xw$week, datesFlash.all$week)
+par(xpd = TRUE)
+text(labels = "*", x = xw[ii, "x"], y = rep(-100, length(xw[ii, "x"])))
+par(xpd = FALSE)
+mtext("Semaine de prélèvement (* = semaine Flash)", side = 1, line = 1.25)
+
+
+par(mar = themar, mgp = themgp, tck = thetck)
+x2 <- barplot(seq.byWeek$bySubmissionDate ~ seq.byWeek$subID + seq.byWeek$subweek, col = colsP[1:(length(unique(seq.byWeek$subID)))], border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", las = 1, 
+             main = "Par semaine de soumission", xaxs = "i", yaxs = "i", ylim = c(0, ymax))
+legend("topleft", col = rev(colsP), legend = rev(names(colsP)), pch = 15, bty = "n")
+mtext("Semaine de soumission", side = 1, line = 1.25)
+
+```
+
+
+## Lineages over time
+
+
+
+### Variants
+
+Use short names
+
+```{r}
+dat$VariantShort <- dat$Variant
+
+variants <- sort(unique(dat$Variant))
+# variants
+variantsShort <- c("", "Alpha", "Beta", "Delta", "Gamma", "Epsilon", "Eta", "Iota", "Kappa", "Lambda", "Zeta")
+# Check
+rbind(variants, variantsShort)
+
+# Assign shorter name
+for(i in seq_along(variants)){
+  dat[which(dat$Variant == variants[i]), "VariantShort"] <- variantsShort[i]
+}
+
+```
+
+
+Load TESSy
+
+```{r}
+dlData <- FALSE # Whether to download the data again from the ECDC website
+source("TESSy.R")
+```
+
+
+### Beta
+
+```{r}
+tessy.Beta <- (dat.tessy.FR$variant == "B.1.351")
+tmp <- dat.tessy.FR[tessy.Beta, ]
+
+# Aggregate the data by week of collection
+tmp.nBeta <- aggregate(tmp$number_detections_variant, by = list(week = tmp$week), FUN = sum)
+# Number of sequences that week
+tmp.n <- aggregate(dat.tessy.FR$number_detections_variant, by = list(week = dat.tessy.FR$week), FUN = sum, na.rm = TRUE)
+tmp.n2 <- aggregate(dat.tessy.FR$number_sequenced, by = list(week = dat.tessy.FR$week), FUN = unique, na.rm = TRUE)
+cbind(tmp.n, tmp.n2)
+
+# Merge and name
+tessyBeta.byweek <- merge(tmp.nBeta, tmp.n, by = "week")
+names(tessyBeta.byweek) <- c("week", "nBeta", "n")
+tessyBeta.byweek$p <- tessyBeta.byweek$nBeta / tessyBeta.byweek$n
+# Confidence interval for proportion
+tessyBeta.byweek$deltaCI <- with(tessyBeta.byweek, 1.96 * sqrt(p * (1-p)/n))
+
+tessyBeta.byweek
+```
+
+
+```{r}
+par(mfrow = c(1,1))
+is.Beta <- dat$VariantShort == "Beta"
+
+# Aggregate the data by week of collection
+tmp.mean <- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = mean)
+# Number of sequences that week
+tmp.n <- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = length)
+# Merge and name
+Beta.byweek <- merge(tmp.mean, tmp.n, by = "week")
+names(Beta.byweek) <- c("week", "p", "n")
+# Confidence interval for proportion
+Beta.byweek$deltaCI <- with(Beta.byweek, 1.96 * sqrt(p * (1-p)/n))
+
+par(las = 1, mar = c(4, 4, 3, 4), 
+    mgp = c(2.2, 0.5, 0), tck = -0.02, 
+    xpd = FALSE)
+plot(Beta.byweek$week, Beta.byweek$p, xlim = c(19, max(Beta.byweek$week)) + c(-1, 0), 
+     xlab = "Collection week (* = Flash week)", ylab = "Proportion Beta", ylim = c(0, 0.25), 
+     frame.plot = FALSE, yaxs = "i", col = cols[1], pch = 16, main = "Beta")
+axis(4)
+
+for(i in seq(0, 1, by = 0.05)) abline(h = i, col = gray(0.9))
+
+arrows(x0 = Beta.byweek$week, y0 = Beta.byweek$p + Beta.byweek$deltaCI, 
+       x1 = Beta.byweek$week, y1 = Beta.byweek$p - Beta.byweek$deltaCI, 
+       code = 3, angle = 90, length = 0.1, col = cols[1])
+
+points(tessyBeta.byweek$week, tessyBeta.byweek$p, col = cols[3], pch = 15)
+
+arrows(x0 = as.numeric(tessyBeta.byweek$week), y0 = tessyBeta.byweek$p + tessyBeta.byweek$deltaCI, 
+       x1 = as.numeric(tessyBeta.byweek$week), y1 = tessyBeta.byweek$p - tessyBeta.byweek$deltaCI, 
+       code = 3, angle = 90, length = 0.1, col = cols[3])
+
+par(xpd = TRUE)
+text(datesFlash[datesFlash$week >=18, "week"], 0.0075, "*")
+
+legend("topleft", col = rev(cols[c(1, 3)]), legend = rev(c("in GISAID with country = France", "in TESSy")), pch = rev(c(16, 15)), bty = "n")
+
+```
+
+There are `r sum(is.Beta)` Beta sequences. 
+
+This is `r mean(is.Beta)` of all sequences.  
+This is `r mean(is.Beta[which(dat$Collection.date.YM >= "2021-04")])` of sequences collected since April (included)
+This is `r mean(is.Beta[which(dat$Collection.date.YM >= "2021-05")])` of sequences collected since May (included)
+This is `r mean(is.Beta[which(dat$Collection.date.YM >= "2021-06")])` of sequences collected since June (included)
+
+
+```{r}
+tessyBeta.byweek
+
+sum(tessyBeta.byweek$nBeta)
+sum(tessyBeta.byweek$nBeta)/sum(tessyBeta.byweek$n)
+
+sum(unique(dat.tessy.FR$number_sequenced))
+```
+
+### Load other data
+
+Load screening data (criblage)
+
+```{r}
+source("publicData_criblage.R")
+```
+
+### AA changes
+
+```{r}
+# Extract AA
+tmp <- gsub('\\(', '', dat$AA.Substitutions)
+tmp <- gsub('\\)', '', tmp)
+aa <- strsplit(tmp, ",")
+```
+
+#### L452R
+
+```{r}
+# Extract information on whether the S:L452R is present as aa substitution in the sequence
+i.L452R <- sapply(aa, function(x){(is.element("Spike_L452R", x))})
+```
+
+Overall, fraction of all sequences with the L452R mutation: `r mean(i.L452R)`.
+
+```{r}
+# Aggregate the data by week of collection
+# Proportion of sequences with L452R that week
+tmp.mean <- aggregate(i.L452R, by = list(week = dat$Collection.week), FUN = mean)
+# Number of sequences that week
+tmp.n <- aggregate(i.L452R, by = list(week = dat$Collection.week), FUN = length)
+# Merge and name
+L452R.byweek <- merge(tmp.mean, tmp.n, by = "week")
+names(L452R.byweek) <- c("week", "p", "n")
+# Confidence interval for proportion
+L452R.byweek$deltaCI <- with(L452R.byweek, 1.96 * sqrt(p * (1-p)/n))
+```
+
+Which variant harbor the L452R mutation? 
+
+```{r}
+table(dat[which(dat$Collection.week >= 21 & i.L452R), "VariantShort"])
+```
+
+
+```{r}
+dat.France$deltaCI_C1 <- 1.96 * sqrt(dat.France$tx_C1/100 * (1-dat.France$tx_C1/100) / (dat.France$nb_C1 + dat.France$nb_C0))
+```
+
+```{r}
+
+par(las = 1, mar = c(4, 4, 3, 4), 
+    mgp = c(2., 0.5, 0), tck = -0.02, 
+    xpd = FALSE)
+plot(L452R.byweek$week, L452R.byweek$p, xlim = range(dat.France$week, na.rm = TRUE) + c(-1, 0), 
+     xlab = "Collection week", ylab = "Proportion L452R", ylim = c(0, 1), 
+     frame.plot = FALSE, yaxs = "i", col = cols[1], pch = 16, main = "L452R")
+axis(4)
+
+for(i in seq(0, 1, by = 0.1)) abline(h = i, col = gray(0.9))
+
+arrows(x0 = L452R.byweek$week, y0 = L452R.byweek$p + L452R.byweek$deltaCI, 
+       x1 = L452R.byweek$week, y1 = L452R.byweek$p - L452R.byweek$deltaCI, 
+       code = 3, angle = 90, length = 0.1, col = cols[1])
+
+points(dat.France$week, dat.France$tx_C1/100, col = cols[2], pch = 16)
+
+arrows(x0 = dat.France$week, y0 = dat.France$tx_C1/100 + dat.France$deltaCI_C1, 
+       x1 = dat.France$week, y1 = dat.France$tx_C1/100 - dat.France$deltaCI_C1, 
+       code = 3, angle = 90, length = 0.1, col = cols[2])
+
+legend("topleft", col = cols[1:2], legend = c("Parmi les séquences sur GISAID", "Données de criblage"), pch = 16, bty = "n")
+
+par(xpd = TRUE)
+text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
+```
+
+
+Que se passe-t-il en semaine 24-25 ? Nombres de sequences par regions
+
+```{r}
+tmp25 <- dat[which(i.L452R & dat$Collection.week == 25), ]
+table(tmp25$region)
+
+tmp24 <- dat[which(i.L452R & dat$Collection.week == 24), ]
+table(tmp24$region)
+```
+
+#### E484K
+
+```{r}
+# Extract information on whether the S:E484K is present as aa substitution in the sequence
+i.E484K <- sapply(aa, function(x){(is.element("Spike_E484K", x))})
+mean(i.E484K)
+
+# Aggregate the data by week of collection
+# Proportion of sequences with L452R that week
+tmp.mean <- aggregate(i.E484K, by = list(week = dat$Collection.week), FUN = mean)
+# Number of sequences that week
+tmp.n <- aggregate(i.E484K, by = list(week = dat$Collection.week), FUN = length)
+# Merge and name
+E484K.byweek <- merge(tmp.mean, tmp.n, by = "week")
+names(E484K.byweek) <- c("week", "p", "n")
+# Confidence interval for proportion
+E484K.byweek$deltaCI <- with(E484K.byweek, 1.96 * sqrt(p * (1-p)/n))
+```
+
+
+```{r}
+table(dat[which(dat$Collection.week >= 21 & i.E484K), "VariantShort"])
+```
+
+
+```{r}
+dat.France$deltaCI_A1 <- 1.96 * sqrt(dat.France$tx_A1/100 * (1-dat.France$tx_A1/100) / (dat.France$nb_A1 + dat.France$nb_A0))
+```
+
+```{r}
+par(las = 1, mar = c(4, 4, 3, 4), 
+    mgp = c(2., 0.5, 0), tck = -0.02, 
+    xpd = FALSE)
+plot(E484K.byweek$week, E484K.byweek$p, xlim = range(dat.France$week, na.rm = TRUE) + c(-1, 0), 
+     xlab = "Collection week", ylab = "Proportion E484K", ylim = c(0, 1), 
+     frame.plot = FALSE, yaxs = "i", col = cols[1], pch = 16, main = "E484K")
+axis(4)
+
+for(i in seq(0, 1, by = 0.1)) abline(h = i, col = gray(0.9))
+
+arrows(x0 = E484K.byweek$week, y0 = E484K.byweek$p + E484K.byweek$deltaCI, 
+       x1 = E484K.byweek$week, y1 = E484K.byweek$p - E484K.byweek$deltaCI, 
+       code = 3, angle = 90, length = 0.1, col = cols[1])
+
+points(dat.France$week, dat.France$tx_A1/100, col = cols[2], pch = 16)
+
+arrows(x0 = dat.France$week, y0 = dat.France$tx_A1/100 + dat.France$deltaCI_A1, 
+       x1 = dat.France$week, y1 = dat.France$tx_A1/100 - dat.France$deltaCI_A1, 
+       code = 3, angle = 90, length = 0.1, col = cols[2])
+
+legend("topleft", col = cols[1:2], legend = c("Parmi les séquences sur GISAID", "Données de criblage"), pch = 16, bty = "n")
+
+par(xpd = TRUE)
+text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
+```
+
+ 
