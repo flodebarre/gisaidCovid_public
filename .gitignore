@@ -4,6 +4,9 @@ data/
 # DSStore
 .DS_Store
 
+thread* 
+*_files/
+
 # History files
 .Rhistory
 .Rapp.history

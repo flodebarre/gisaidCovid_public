@@ -7,6 +7,7 @@ output:
       code_folding: hide
       toc: TRUE
       toc_float: TRUE
+      self_contained: no  
 ---
 
 # Initializations
@@ -31,7 +32,15 @@ names(colsP) <- c("autre", "HCL", "HMN", "IHU", "IPP")
 colsC <- c(brewer.pal(9, "Set1"), brewer.pal(6, "Set2"), brewer.pal(12, "Set3"))
 colsV2 <- brewer.pal(9, "Set3")
 
-cols <- brewer.pal(n = 3, name = "Dark2")
+colGISAID <- "#106b63"
+colECDC <- "#69b023"
+colSPF <- "#e30155"
+
+cols <- c(colGISAID, colECDC, colSPF, "#FE6100", "#785EF0")
+names(cols) <- c("GISAID", "TESSy", "Flash", "criblage", "option")
+
+pchs <- c(16, 15, 2, 17, 1)
+names(pchs) <- c(names(cols)[1:3], "Flash2", "TESSyGISAID")
 
 ```
 
@@ -207,6 +216,56 @@ datesFlash.all <- datesFlash
 datesFlash <- datesFlash[datesFlash$FlashNb >=3 , ]
 ```
 
+Flash data 
+Typed from <https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france#block-337272>, accessed 2021-07-21
+
+```{r}
+dat.Flash <- read.csv("data_public/2021-07-21_Flash.csv")
+head(dat.Flash)
+
+dat.Flash$deltaCI <- 1.96 * sqrt(dat.Flash$Proportion * (1 - dat.Flash$Proportion) / dat.Flash$NbPrelevSeq)
+```
+
+Specific Flash data
+
+```{r}
+# Load Flash 11 data
+flash11 <- read.csv("data_public/Flash11_Beta.csv")
+flash11 <- flash11[flash11$Region != "Total", ]
+flash11$nBeta <- round(flash11$pBeta * flash11$Prelevements)
+
+# Load Flash 10 data
+flash10 <- read.csv("data_public/Flash10_Beta.csv")
+flash10 <- flash10[flash10$Region != "Total", ]
+flash10$nBeta <- round(flash10$pBeta * flash10$Prelevements)
+
+# Load Flash 09 data
+flash09 <- read.csv("data_public/Flash09_Beta.csv")
+flash09 <- flash09[flash09$Region != "Total", ]
+flash09$nBeta <- round(flash09$pBeta * flash09$Prelevements)
+
+# Get codes of Outre-Mer regions
+unique(c(flash09$Region, flash10$Region, flash11$Region))
+reg_OM <- c("GUA", "REU", "MAR", "MAY")
+
+# Remove Outre-Mer
+flash11.noOM <- flash11[which(!is.element(flash11$Region, reg_OM)), ]
+flash10.noOM <- flash10[which(!is.element(flash10$Region, reg_OM)), ]
+flash09.noOM <- flash09[which(!is.element(flash09$Region, reg_OM)), ]
+
+# Compute total numbers of sequences, and Beta sequences
+tot11 <- apply(flash11.noOM[, c("Prelevements", "nBeta")], 2, sum)
+tot10 <- apply(flash10.noOM[, c("Prelevements", "nBeta")], 2, sum)
+tot09 <- apply(flash09.noOM[, c("Prelevements", "nBeta")], 2, sum)
+
+# Construct final dataset with the results
+totFlash.noOM <- data.frame(week = c(19, 21, 23))
+totFlash.noOM$nTot <- c(tot09[1], tot10[1], tot11[1])
+totFlash.noOM$pBeta <- c(tot09[2]/tot09[1], tot10[2]/tot10[1], tot11[2]/tot11[1])
+totFlash.noOM$deltaCI <- 1.96 * sqrt(totFlash.noOM$pBeta * (1-totFlash.noOM$pBeta) / totFlash.noOM$nTot)
+totFlash.noOM
+```
+
 
 # France 
 
@@ -239,7 +298,7 @@ submitters <- sort(unique(dat$submitter))
 ```
 
 
-### Sequence metadata 
+## Sequence metadata 
 
 Dates
 
@@ -447,6 +506,7 @@ source("TESSy.R")
 tessy.Beta <- (dat.tessy.FR$variant == "B.1.351")
 tmp <- dat.tessy.FR[tessy.Beta, ]
 
+
 # Aggregate the data by week of collection
 tmp.nBeta <- aggregate(tmp$number_detections_variant, by = list(week = tmp$week), FUN = sum)
 # Number of sequences that week
@@ -465,6 +525,28 @@ tessyBeta.byweek
 ```
 
 
+```{r, results='hide'}
+
+# Same with GISAID data on TESSy
+gisaidTESSy.Beta <- (dat.gisaid.FR$variant == "B.1.351")
+gisaidTESSy.byweek <- dat.gisaid.FR[which(gisaidTESSy.Beta), ]
+
+# Are there duplicate values
+stopifnot(!any(duplicated(tmp$year_week)))
+
+# Total number of detection
+sum(gisaidTESSy.byweek$number_detections_variant)
+
+gisaidTESSy.byweek$p <- gisaidTESSy.byweek$number_detections_variant / gisaidTESSy.byweek$number_sequenced
+
+# Confidence interval for proportion
+gisaidTESSy.byweek$deltaCI <- with(gisaidTESSy.byweek, 1.96 * sqrt(p * (1-p)/number_sequenced))
+
+gisaidTESSy.byweek
+
+```
+
+
 ```{r}
 par(mfrow = c(1,1))
 is.Beta <- dat$VariantShort == "Beta"
@@ -480,29 +562,63 @@ names(Beta.byweek) <- c("week", "p", "n")
 Beta.byweek$deltaCI <- with(Beta.byweek, 1.96 * sqrt(p * (1-p)/n))
 
 par(las = 1, mar = c(4, 4, 3, 4), 
-    mgp = c(2.2, 0.5, 0), tck = -0.02, 
+    mgp = c(2.5, 0.5, 0), tck = -0.015, 
     xpd = FALSE)
-plot(Beta.byweek$week, Beta.byweek$p, xlim = c(19, max(Beta.byweek$week)) + c(-1, 0), 
-     xlab = "Collection week (* = Flash week)", ylab = "Proportion Beta", ylim = c(0, 0.25), 
-     frame.plot = FALSE, yaxs = "i", col = cols[1], pch = 16, main = "Beta")
+plot(Beta.byweek$week, Beta.byweek$p, 
+     xlim = c(19, max(Beta.byweek$week)) + c(-1, 0), 
+     xlab = "", ylab = "Proportion Beta", ylim = c(0, 0.225), 
+     frame.plot = FALSE, yaxs = "i", main = "Beta", 
+     type = "n", 
+     axes = FALSE)
 axis(4)
+axis(1, at =  seq(18, max(Beta.byweek$week), by = 1))
+axis(2)
+mtext(side = 1, text = "Collection week (* = Flash week)", line = 2)
+
+deltaX <- 0.04 # Offset
 
 for(i in seq(0, 1, by = 0.05)) abline(h = i, col = gray(0.9))
 
+points(Beta.byweek$week, Beta.byweek$p, col = cols["GISAID"], pch = pchs["GISAID"])
+
 arrows(x0 = Beta.byweek$week, y0 = Beta.byweek$p + Beta.byweek$deltaCI, 
        x1 = Beta.byweek$week, y1 = Beta.byweek$p - Beta.byweek$deltaCI, 
-       code = 3, angle = 90, length = 0.1, col = cols[1])
+       code = 3, angle = 90, length = 0.00, col = cols["GISAID"])
 
-points(tessyBeta.byweek$week, tessyBeta.byweek$p, col = cols[3], pch = 15)
+# Add TESSy data
+points(as.numeric(tessyBeta.byweek$week) - 2*deltaX, tessyBeta.byweek$p, col = cols["TESSy"], pch = pchs["TESSy"])
 
-arrows(x0 = as.numeric(tessyBeta.byweek$week), y0 = tessyBeta.byweek$p + tessyBeta.byweek$deltaCI, 
-       x1 = as.numeric(tessyBeta.byweek$week), y1 = tessyBeta.byweek$p - tessyBeta.byweek$deltaCI, 
-       code = 3, angle = 90, length = 0.1, col = cols[3])
+arrows(x0 = as.numeric(tessyBeta.byweek$week) - 2*deltaX, y0 = tessyBeta.byweek$p + tessyBeta.byweek$deltaCI, 
+       x1 = as.numeric(tessyBeta.byweek$week) - 2*deltaX, y1 = tessyBeta.byweek$p - tessyBeta.byweek$deltaCI, 
+       code = 3, angle = 90, length = 0.00, col = cols["TESSy"])
+
+# Add TESSy GISAID data
+points(as.numeric(gisaidTESSy.byweek$week) - deltaX, gisaidTESSy.byweek$p, col = cols["GISAID"], pch = pchs["TESSyGISAID"])
+
+arrows(x0 = as.numeric(gisaidTESSy.byweek$week) - deltaX, y0 = gisaidTESSy.byweek$p + gisaidTESSy.byweek$deltaCI, 
+       x1 = as.numeric(gisaidTESSy.byweek$week) - deltaX, y1 = gisaidTESSy.byweek$p - gisaidTESSy.byweek$deltaCI, 
+       code = 3, angle = 90, length = 0.00, col = cols["GISAID"])
+
+
+# Add Flash data
+dat.Flash.beta <- dat.Flash[dat.Flash$Variant_short == "Beta", ]
+
+points(dat.Flash.beta$week + deltaX, dat.Flash.beta$Proportion, col = adjustcolor(cols["Flash"], 0.8), pch = pchs["Flash"])
+arrows(x0 = as.numeric(dat.Flash.beta$week) + deltaX, y0 = dat.Flash.beta$Proportion + dat.Flash.beta$deltaCI, 
+       x1 = as.numeric(dat.Flash.beta$week) + deltaX, y1 = dat.Flash.beta$Proportion - dat.Flash.beta$deltaCI, 
+       code = 3, angle = 90, length = 0.00, col = cols["Flash"])
+
+# Add Flash data without Outre-Mer
+points(totFlash.noOM$week + 2*deltaX, totFlash.noOM$pBeta, col = cols["Flash"], pch = pchs["Flash2"])
+arrows(x0 = as.numeric(totFlash.noOM$week) + 2*deltaX, y0 = totFlash.noOM$pBeta + totFlash.noOM$deltaCI, 
+       x1 = as.numeric(totFlash.noOM$week) + 2*deltaX, y1 = totFlash.noOM$pBeta - totFlash.noOM$deltaCI, 
+       code = 3, angle = 90, length = 0.00, col = cols["Flash"])
+
 
 par(xpd = TRUE)
-text(datesFlash[datesFlash$week >=18, "week"], 0.0075, "*")
-
-legend("topleft", col = rev(cols[c(1, 3)]), legend = rev(c("in GISAID with country = France", "in TESSy")), pch = rev(c(16, 15)), bty = "n")
+text(datesFlash[datesFlash$week >=18, "week"], -0.02, "*")
+par(xpd = FALSE)
+legend("topleft", col = cols[c("TESSy", "GISAID", "GISAID", "Flash", "Flash")], legend = c("EDCD, source TESSy", "ECDC, source GISAID", "GISAID with country = France", "Flash surveys", "Flash surveys without Overseas France"), pch = pchs[c("TESSy", "TESSyGISAID", "GISAID", "Flash", "Flash2")], bty = "n")
 
 ```
 
@@ -523,15 +639,14 @@ sum(tessyBeta.byweek$nBeta)/sum(tessyBeta.byweek$n)
 sum(unique(dat.tessy.FR$number_sequenced))
 ```
 
-### Load other data
+
+## AA changes
 
 Load screening data (criblage)
 
 ```{r}
 source("publicData_criblage.R")
 ```
-
-### AA changes
 
 ```{r}
 # Extract AA
@@ -580,22 +695,22 @@ par(las = 1, mar = c(4, 4, 3, 4),
     xpd = FALSE)
 plot(L452R.byweek$week, L452R.byweek$p, xlim = range(dat.France$week, na.rm = TRUE) + c(-1, 0), 
      xlab = "Collection week", ylab = "Proportion L452R", ylim = c(0, 1), 
-     frame.plot = FALSE, yaxs = "i", col = cols[1], pch = 16, main = "L452R")
+     frame.plot = FALSE, yaxs = "i", col = cols["GISAID"], pch = 16, main = "L452R")
 axis(4)
 
 for(i in seq(0, 1, by = 0.1)) abline(h = i, col = gray(0.9))
 
 arrows(x0 = L452R.byweek$week, y0 = L452R.byweek$p + L452R.byweek$deltaCI, 
        x1 = L452R.byweek$week, y1 = L452R.byweek$p - L452R.byweek$deltaCI, 
-       code = 3, angle = 90, length = 0.1, col = cols[1])
+       code = 3, angle = 90, length = 0.1, col = cols["GISAID"])
 
-points(dat.France$week, dat.France$tx_C1/100, col = cols[2], pch = 16)
+points(dat.France$week, dat.France$tx_C1/100, col = cols["criblage"], pch = 18)
 
 arrows(x0 = dat.France$week, y0 = dat.France$tx_C1/100 + dat.France$deltaCI_C1, 
        x1 = dat.France$week, y1 = dat.France$tx_C1/100 - dat.France$deltaCI_C1, 
-       code = 3, angle = 90, length = 0.1, col = cols[2])
+       code = 3, angle = 90, length = 0.1, col = cols["criblage"])
 
-legend("topleft", col = cols[1:2], legend = c("Parmi les séquences sur GISAID", "Données de criblage"), pch = 16, bty = "n")
+legend("topleft", col = cols[c("GISAID", "criblage")], legend = c("in GISAID with country = France", "Criblage"), pch = c(16, 18), bty = "n")
 
 par(xpd = TRUE)
 text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
@@ -647,25 +762,52 @@ par(las = 1, mar = c(4, 4, 3, 4),
     xpd = FALSE)
 plot(E484K.byweek$week, E484K.byweek$p, xlim = range(dat.France$week, na.rm = TRUE) + c(-1, 0), 
      xlab = "Collection week", ylab = "Proportion E484K", ylim = c(0, 1), 
-     frame.plot = FALSE, yaxs = "i", col = cols[1], pch = 16, main = "E484K")
+     frame.plot = FALSE, yaxs = "i", col = cols["GISAID"], pch = 16, main = "E484K")
 axis(4)
 
 for(i in seq(0, 1, by = 0.1)) abline(h = i, col = gray(0.9))
 
 arrows(x0 = E484K.byweek$week, y0 = E484K.byweek$p + E484K.byweek$deltaCI, 
        x1 = E484K.byweek$week, y1 = E484K.byweek$p - E484K.byweek$deltaCI, 
-       code = 3, angle = 90, length = 0.1, col = cols[1])
+       code = 3, angle = 90, length = 0.1, col = cols["GISAID"])
 
-points(dat.France$week, dat.France$tx_A1/100, col = cols[2], pch = 16)
+points(dat.France$week, dat.France$tx_A1/100, col = cols["criblage"], pch = 18)
 
 arrows(x0 = dat.France$week, y0 = dat.France$tx_A1/100 + dat.France$deltaCI_A1, 
        x1 = dat.France$week, y1 = dat.France$tx_A1/100 - dat.France$deltaCI_A1, 
-       code = 3, angle = 90, length = 0.1, col = cols[2])
+       code = 3, angle = 90, length = 0.1, col = cols["criblage"])
 
-legend("topleft", col = cols[1:2], legend = c("Parmi les séquences sur GISAID", "Données de criblage"), pch = 16, bty = "n")
+legend("topleft", col = cols[c("GISAID", "criblage")], legend = c("in GISAID with country = France", "Criblage"), pch = c(16, 18), bty = "n")
 
 par(xpd = TRUE)
 text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
 ```
 
+```{r}
+par(las = 1)
+plot(dat.France$week, dat.France$nb_pos/7 * dat.France$tx_A1/100, col = cols["criblage"], pch = 18, 
+     yaxs = "i", 
+     frame.plot = FALSE, ylim = c(0, 1.05*max(dat.France$nb_pos/7 * dat.France$tx_A1/100)), 
+     xlab = "week", ylab = "nb of cases with E484K", main = "E484K mutation")
+
+arrows(x0 = dat.France$week, y0 = dat.France$nb_pos/7 * (dat.France$tx_A1/100 + dat.France$deltaCI_A1), 
+       x1 = dat.France$week, y1 = dat.France$nb_pos/7 * (dat.France$tx_A1/100 - dat.France$deltaCI_A1), 
+       code = 3, angle = 90, length = 0.1, col = cols["criblage"])
+
+```
+
+```{r}
+
+for(cw in 22:28){
+  tmp <- dat[which(dat$Collection.week == cw & i.E484K), ]
+  print(cw)
+  tb <- table(tmp$VariantShort)
+  print(tb)
+  print(c(sum(tb), tb["Beta"], tb["Beta"]/sum(tb)))
+}
+table(dat[which(dat$Collection.week >= 21 & i.E484K), "VariantShort"])
+
+```
+
+ 
  
