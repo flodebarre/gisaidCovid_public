@@ -66,7 +66,8 @@ Note: Oversea territories are referenced as independent on GISAID
 ## Load data
 
 ```{r loadData, results = 'hide'}
-dat <- read.csv("data/2021-07-20_France.tsv", sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+thedate <- "2021-07-24"
+dat <- read.csv(paste0("data/", thedate, "_France.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
 head(dat)
 names(dat) <- c("Virus.name", "Type", "Accession.ID", "Collection.date", "Location", "Additional.location.information", "Sequence.length", "Host", "Patient.age", "Gender", "Clade", "Pango.lineage", "Pangolin.version", "Variant", "AA.Substitutions", "Submission.date", "Is.reference", "Is.complete", "Is.high.coverage", "Is.low.coverage", "N.Content", "GC.Content")
 ```
@@ -151,9 +152,51 @@ dat$diffSubCol <- as.numeric(dat$Submission.date.YMD - dat$Collection.date.YMD)
 ```
 
 Locations:  
+
 Try to get some uniformity automatically because some spellings differ
 
-```{r cleanDataLocations, echo = TRUE, results = 'hide'}
+```{r}
+# Split locations
+# Locations are presented as a single string, which we split
+locs <- strsplit(dat$Location, " / ")
+# The strings are of different lengths / precision; get length (number of geographic divisions)
+lenlocs <- sapply(locs, length)
+table(lenlocs)
+# Turn into matrix, filling with NAs
+# Source: https://stackoverflow.com/a/15201690
+mat <- as.data.frame(t(sapply(locs, "[", i = 1:max(lenlocs))))
+names(mat) <- c("continent", "country", "region", "div4", "div5")
+dat <- cbind(dat, mat)
+# Also add information about location precision
+dat <- cbind(dat, locationLength = lenlocs)
+names(dat)
+
+# Load dictionnary to convert region names
+infoRegion <- read.csv("data_public/correspondance_regions.csv")
+
+# Check that we have all names
+rr <- unique(dat$region)
+rr <- rr[!is.na(rr)]
+all(is.element(rr, infoRegion$Region_on_GISAID))
+stopifnot(is.element(rr, infoRegion$Region_on_GISAID))
+
+# Convert into dictionnary
+dic.regnames <- c(infoRegion$region)
+names(dic.regnames) <- infoRegion$Region_on_GISAID
+
+# Save old region names
+dat$oldRegion <- dat$region
+
+# Convert names into the proper region names
+dat$region <- dic.regnames[dat$oldRegion]
+
+regions <- sort(unique(dat$region))
+```
+
+
+```{r cleanDataLocations, echo = FALSE, results = 'hide', eval = FALSE}
+## Old version -- kept for legacy, but not used anymore
+
 # Extract locations
 # Reformat locations: 
 # 1) Remove spaces
@@ -267,12 +310,10 @@ totFlash.noOM
 ```
 
 
-# France 
-
 ```{r}
 table(country = dat$country)
 # Keep only mainland France
-dat <- dat[dat$country == "FRANCE", ]
+dat <- dat[dat$country == "France", ]
 ```
 
 There are `r nrow(dat)` samples with location in France. 
@@ -298,7 +339,7 @@ submitters <- sort(unique(dat$submitter))
 ```
 
 
-## Sequence metadata 
+# Sequence metadata 
 
 Dates
 
@@ -323,14 +364,7 @@ tt <- table(dat[which(is.na(dat$region)), "submitter"])
 rbind(missing_region = tt, tot_seq = totSeq[names(tt)])
 ```
 
-Regions need to be standardized... 
-
-```{r}
-sort(unique(dat$region))
-```
-
-
-### Metadata on hosts
+## Metadata on hosts
 
 ```{r}
 # Hosts
@@ -376,7 +410,7 @@ table(dat$Gender, useNA = "ifany")
 rbind(missing_age = table(dat[which(is.na(dat$Gender)), "submitter"]), tot_seq = table(dat$submitter))
 ```
 
-### Virus
+## Virus
 
 
 ```{r}
@@ -397,9 +431,9 @@ Pangolin version
 table(dat$Pangolin.version)
 ```
 
-## Submissions 
+# Submissions 
 
-### By Platform
+## By Platform
 
 ```{r}
 tabFRsub <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subM = dat$Collection.date.YM), FUN = length)
@@ -467,11 +501,11 @@ mtext("Semaine de soumission", side = 1, line = 1.25)
 ```
 
 
-## Lineages over time
+# Lineages over time
 
 
 
-### Variants
+## Variants
 
 Use short names
 
@@ -500,7 +534,7 @@ source("TESSy.R")
 ```
 
 
-### Beta
+## Beta
 
 ```{r}
 tessy.Beta <- (dat.tessy.FR$variant == "B.1.351")
@@ -549,7 +583,12 @@ gisaidTESSy.byweek
 
 ```{r}
 par(mfrow = c(1,1))
-is.Beta <- dat$VariantShort == "Beta"
+# is.Beta <- dat$VariantShort == "Beta"
+
+# Version 2 with sublineages
+is.Beta <- (substr(dat$Pango.lineage, 1, 7) == "B.1.351")
+sum(is.Beta)
+mean(is.Beta)
 
 # Aggregate the data by week of collection
 tmp.mean <- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = mean)
@@ -639,8 +678,139 @@ sum(tessyBeta.byweek$nBeta)/sum(tessyBeta.byweek$n)
 sum(unique(dat.tessy.FR$number_sequenced))
 ```
 
+### Details on the Beta
 
-## AA changes
+```{r}
+dat.Beta <- dat[which(is.Beta), ]
+
+table(dat.Beta$submitter)
+head(dat.Beta)
+
+tt <- table(dat.Beta[which(is.na(dat.Beta$Collection.date.YMD)), "submitter"])
+tt
+sum(tt)
+
+tt2 <- table(dat.Beta[which(is.na(dat.Beta$region)), "submitter"])
+tt2
+
+# -> dates and regions are OK
+
+agg.Beta.region.month1 <- aggregate(is.Beta, by = list(region = dat$region, month = dat$Collection.date.YM), FUN = sum)
+names(agg.Beta.region.month1)[3] <- "nBeta"
+
+agg.Beta.region.month2 <- aggregate(is.Beta, by = list(region = dat$region, month = dat$Collection.date.YM), FUN = length)
+names(agg.Beta.region.month2)[3] <- "nSeq"
+
+agg.Beta.region.month <- merge(agg.Beta.region.month1, agg.Beta.region.month2, all = TRUE)
+
+agg.Beta.region.month$pBeta <- agg.Beta.region.month$nBeta / agg.Beta.region.month$nSeq
+agg.Beta.region.month$deltaCI <- 1.96 * sqrt((agg.Beta.region.month$pBeta * (1-agg.Beta.region.month$pBeta)) / agg.Beta.region.month$nSeq)
+```
+
+```{r}
+max(agg.Beta.region.month$nSeq)
+
+max(agg.Beta.region.month$nBeta)
+
+# Remove single sequence
+agg.Beta.region.month <- agg.Beta.region.month[agg.Beta.region.month$nBeta != agg.Beta.region.month$nSeq, ]
+
+# Consistency check
+sum(agg.Beta.region.month$nBeta)
+
+
+```
+
+
+
+```{r}
+fname <- "beta_regions.pdf"
+pdf(file = fname, width = 10, height = 12)
+layout(matrix(c(0, 7, 14, 
+         9, 8, 6, 
+         3, 4, 2,
+         12, 1, 13, 
+         10, 11, 5), byrow = TRUE, ncol = 3))
+cexx <- 0.7
+ln <- 2
+for(reg in regions){
+
+  sub <- agg.Beta.region.month[agg.Beta.region.month$region == reg, ]
+  # Source trick https://stackoverflow.com/questions/6242955/converting-year-and-month-yyyy-mm-format-to-a-date
+  
+  xmin <- min(agg.Beta.region.month[agg.Beta.region.month$nBeta>0, "month"])
+  xmax <- max(agg.Beta.region.month[agg.Beta.region.month$nBeta>0, "month"])
+  xx <- seq(as.Date(paste(xmin, "-01", sep="")), as.Date(paste(xmax, "-01", sep="")), by = "month")
+  
+  
+  coln <- "#2A7A6A"
+  colp <- "#BF9142"#"#f18956"
+  
+  ymax <- max(agg.Beta.region.month$nBeta)
+  xa <- pretty(seq(0, ymax, by = 50))
+  ymax <- max(xa)
+  
+  par(mgp = c(2.75, 0.25, 0), tck = -0.01, 
+      mar = c(5, 4, 3, 4), 
+      las = 1)
+  
+  plot(as.Date(paste(sub$month, "-01", sep="")), sub$nBeta, xlim = range(xx), ylim = c(0, max(agg.Beta.region.month$nBeta)), axes = FALSE, 
+       xlab = "Collection month", 
+       ylab = "", yaxs = "i", 
+       type = "n")
+  
+  for(i in seq(0, ymax, by = 50)){
+    abline(h = i, col = gray(0.9))
+  }
+  
+  points(as.Date(paste(sub$month, "-01", sep="")), sub$nBeta, xlim = range(xx), 
+       col = coln, pch = 16, 
+       type = "h", lwd = 20, lend = "butt")
+  
+  axis(1, at = xx, labels = format.Date(xx, "%Y %b"), las = 3, cex.axis = 0.6)
+  
+  axis(2, col = coln, col.axis = coln, at = xa)
+  mtext(side = 2, text = "Number of Beta", las = 3, line = ln, col = coln, cex = cexx)
+  points(as.Date(paste(sub$month, "-01", sep="")), sub$pBeta * ymax, col = colp, pch = 17, type = "o", lwd = 0.5, cex = 1.5)
+  arrows(x0 = as.Date(paste(sub$month, "-01", sep="")), 
+         y0 = (sub$pBeta - sub$deltaCI)* ymax, 
+         x1 = as.Date(paste(sub$month, "-01", sep="")), 
+         y1 = (sub$pBeta + sub$deltaCI)* ymax,
+         code = 3, length = 0, lwd = 2, col = colp
+  )
+  
+  axis(4, col = colp, col.axis = colp, at = xa, labels = xa /max(xa))
+  mtext(side = 4, text = "Proportion of Beta", las = 3, line = ln, col = colp, cex = cexx)
+  
+  title(main = reg)
+
+}
+
+plot(0, type = "n", axes = FALSE, xlab = "", ylab = "", xlim = c(-1, 1), ylim = c(-1, 1))
+
+legend(x = 0, y = 0, legend = paste0("Source: GISAID, ", thedate, ".\nDistribution across regions and months of the ", toString(sum(agg.Beta.region.month$nBeta)), " seqs \nfor which month and location data are available \n(out of the ", toString(sum(is.Beta)), " Beta sequences).\nBeta: B.1.351*\n\nAttention: Some known data quality issues\n- Collection date is sometimes not the actual collection date \n   but sequencing date;\n- Location is sometimes sequencing lab \n   instead of sampling location."), xjust = 0.5, yjust = 0., bty = "n", cex = 0.78)
+
+dev.off()
+system(paste0("open ", fname))
+```
+
+IDF in May
+```{r}
+sub <- dat[which(dat$region == "Île-de-France" & is.Beta), ]
+
+table(sub$submitter, sub$Pango.lineage)
+
+sub2 <- dat[which(dat$region == "Île-de-France" & dat$Collection.date.YM == "2021-05"), ]
+table(sub2$submitter)
+
+table(sub$div4, useNA = "ifany")
+
+
+table(dat$region, dat$submitter)
+```
+
+
+# AA changes
 
 Load screening data (criblage)
 
@@ -655,7 +825,7 @@ tmp <- gsub('\\)', '', tmp)
 aa <- strsplit(tmp, ",")
 ```
 
-#### L452R
+## L452R
 
 ```{r}
 # Extract information on whether the S:L452R is present as aa substitution in the sequence
@@ -727,7 +897,7 @@ tmp24 <- dat[which(i.L452R & dat$Collection.week == 24), ]
 table(tmp24$region)
 ```
 
-#### E484K
+## E484K
 
 ```{r}
 # Extract information on whether the S:E484K is present as aa substitution in the sequence
