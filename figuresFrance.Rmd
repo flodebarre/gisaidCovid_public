@@ -501,6 +501,104 @@ mtext("Semaine de soumission", side = 1, line = 1.25)
 ```
 
 
+### Focus IHU
+
+## IHU 
+
+```{r}
+# All sequences
+subIHU <- dat[dat$submitter == "IHU", ]
+
+is.short <- (subIHU$Sequence.length < 5000)
+missing.day <- (is.na(subIHU$Collection.date.YMD))
+
+length(is.short)
+length(missing.day)
+aggregate(subIHU$Virus.name, by = list(Sanger = is.short, missingDay = missing.day), FUN = length)
+
+sum(!is.short)
+
+subIHU.NGS.missingday <- subIHU[!is.short & missing.day, ]
+
+nrow(subIHU.NGS.missingday)
+
+write.csv(subIHU.NGS.missingday[, c("Virus.name", "Accession.ID", "Collection.date", "Submission.date")], file = "../data/Export_IHU_NGS-missingCollectionDate.csv")
+
+head(subIHU.NGS.missingday)
+
+table(subIHU.NGS.missingday$Submission.date.YMD)
+
+totSeq <- table(dat$submitter)
+tt <- table(dat[which(is.na(dat$Collection.date.YMD)), "submitter"])
+rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
+tt/totSeq[names(tt)]
+```
+
+```{r}
+unique(subIHU$Submission.date.YMD)
+
+subIHU.mostrecent <- subIHU[which(subIHU$Submission.date.YMD == max(subIHU$Submission.date.YMD)),]
+
+table(subIHU.mostrecent$Submission.date.YMD)
+
+table(subIHU.mostrecent$Collection.date.YMD)
+
+hist(as.Date(subIHU$Submission.date.YMD), breaks = 500)
+
+hist(as.Date(subIHU$Collection.date.YMD), breaks = 200, freq = TRUE, xlab = "Collection date", main = "Collection dates, IHU", col = gray(0.9))
+axis(4)
+
+
+subIHU.mostrecent[10,]
+unique(subIHU$Variant)
+
+unique(subIHU.mostrecent$Location)
+nrow(subIHU.mostrecent)
+
+subIHU.mostrecent[1,]
+
+sort(table(subIHU.mostrecent$Pango.lineage), decreasing = TRUE)
+
+byLin <- aggregate(subIHU.mostrecent$Pango.lineage, by = list(Lineage = subIHU.mostrecent$Pango.lineage, Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
+totdate <- aggregate(subIHU.mostrecent$Pango.lineage, by = list(Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
+names(totdate)[2] <- "tot"
+
+byL <- merge(byLin, totdate, by = "Collection.date")
+byL$p <- byL$x / byL$tot
+
+
+byVar <- aggregate(subIHU.mostrecent$VariantShort, by = list(Variant = subIHU.mostrecent$VariantShort, Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
+totdate <- aggregate(subIHU.mostrecent$VariantShort, by = list(Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
+names(totdate)[2] <- "tot"
+
+byV <- merge(byVar, totdate, by = "Collection.date")
+byV$p <- byV$x / byV$tot
+
+barplot()
+?barplot
+
+length(unique(byV$Variant))
+
+byL[order(byL$p), ]
+```
+
+
+```{r}
+par(mfrow = c(1, 1))
+barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
+             xlab = "Collection date", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "right", cex = 0.7, pt.cex = 0.9, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10))
+
+par(mar = c(4, 4, 1, 4))
+barplot(byV$x ~ byV$Variant + byV$Collection.date, border = gray(0, 0), 
+             xlab = "Collection date", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "right", cex = 0.9, pt.cex = 0.9, bty = "n"), col = brewer.pal(length(unique(byV$Variant)), "Set3"))
+
+
+```
+
+
+
 # Lineages over time
 
 
@@ -809,6 +907,7 @@ table(sub$div4, useNA = "ifany")
 table(dat$region, dat$submitter)
 ```
 
+## Delta 
 
 # AA changes
 
