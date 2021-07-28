@@ -792,9 +792,15 @@ gisaidTESSy.byweek$deltaCI &lt;- with(gisaidTESSy.byweek, 1.96 * sqrt(p * (1-p)/
 
 gisaidTESSy.byweek</code></pre>
 <pre class="r"><code>par(mfrow = c(1,1))
-is.Beta &lt;- dat$VariantShort == &quot;Beta&quot;
+# is.Beta &lt;- dat$VariantShort == &quot;Beta&quot;
 
-# Aggregate the data by week of collection
+# Version 2 with sublineages
+is.Beta &lt;- (substr(dat$Pango.lineage, 1, 7) == &quot;B.1.351&quot;)
+sum(is.Beta)</code></pre>
+<pre><code>## [1] 2959</code></pre>
+<pre class="r"><code>mean(is.Beta)</code></pre>
+<pre><code>## [1] 0.05153346</code></pre>
+<pre class="r"><code># Aggregate the data by week of collection
 tmp.mean &lt;- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = mean)
 # Number of sequences that week
 tmp.n &lt;- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = length)
@@ -863,9 +869,9 @@ text(datesFlash[datesFlash$week &gt;=18, &quot;week&quot;], -0.02, &quot;*&quot;
 par(xpd = FALSE)
 legend(&quot;topleft&quot;, col = cols[c(&quot;TESSy&quot;, &quot;GISAID&quot;, &quot;GISAID&quot;, &quot;Flash&quot;, &quot;Flash&quot;)], legend = c(&quot;EDCD, source TESSy&quot;, &quot;ECDC, source GISAID&quot;, &quot;GISAID with country = France&quot;, &quot;Flash surveys&quot;, &quot;Flash surveys without Overseas France&quot;), pch = pchs[c(&quot;TESSy&quot;, &quot;TESSyGISAID&quot;, &quot;GISAID&quot;, &quot;Flash&quot;, &quot;Flash2&quot;)], bty = &quot;n&quot;)</code></pre>
 <p><img src="figuresFrance_files/figure-html/unnamed-chunk-28-1.png" width="672" /></p>
-<p>There are 2149 Beta sequences.</p>
-<p>This is 0.0374266 of all sequences.<br />
-This is 0.0570954 of sequences collected since April (included) This is 0.0551019 of sequences collected since May (included) This is 0.0426794 of sequences collected since June (included)</p>
+<p>There are 2959 Beta sequences.</p>
+<p>This is 0.0515335 of all sequences.<br />
+This is 0.0737519 of sequences collected since April (included) This is 0.0694548 of sequences collected since May (included) This is 0.0562679 of sequences collected since June (included)</p>
 <pre class="r"><code>tessyBeta.byweek</code></pre>
 <pre><code>##   week nBeta    n          p     deltaCI
 ## 1   19   305 3013 0.10122801 0.010770395
