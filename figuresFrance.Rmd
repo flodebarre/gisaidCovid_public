@@ -63,16 +63,32 @@ to extract sequences from France (as country) only. The resulting file is stored
 
 Note: Oversea territories are referenced as independent on GISAID
 
+Extracted data for Martinique and Guadeloupe as well (`grep Martinique` and `grep Guadeloupe`). 
+
 ## Load data
 
 ```{r loadData, results = 'hide'}
-thedate <- "2021-07-24"
+thedate <- "2021-08-13"
+# Load France data
 dat <- read.csv(paste0("data/", thedate, "_France.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+
+# Load data DROM
+dat2 <- read.csv(paste0("data/", thedate, "_Martinique.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+dat3 <- read.csv(paste0("data/", thedate, "_Guadeloupe.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+
+# Add column to distinguish metro from DROM
+dat$metropole <- TRUE
+dat2$metropole <- FALSE
+dat3$metropole <- FALSE
+
+# Join the datasets
+dat <- rbind(dat, dat2, dat3)
+
 head(dat)
-names(dat) <- c("Virus.name", "Type", "Accession.ID", "Collection.date", "Location", "Additional.location.information", "Sequence.length", "Host", "Patient.age", "Gender", "Clade", "Pango.lineage", "Pangolin.version", "Variant", "AA.Substitutions", "Submission.date", "Is.reference", "Is.complete", "Is.high.coverage", "Is.low.coverage", "N.Content", "GC.Content")
+names(dat) <- c("Virus.name", "Type", "Accession.ID", "Collection.date", "Location", "Additional.location.information", "Sequence.length", "Host", "Patient.age", "Gender", "Clade", "Pango.lineage", "Pangolin.version", "Variant", "AA.Substitutions", "Submission.date", "Is.reference", "Is.complete", "Is.high.coverage", "Is.low.coverage", "N.Content", "GC.Content", "Metropole")
 ```
 
-There are `r nrow(dat)` lines in the dataset. 
+There are `r nrow(dat)` lines in the dataset; `r sum(dat$Metropole)` for mainland France, `r nrow(dat2)` for Martinique and `nrow(dat3)` for Guadeloupe. 
 
 ## Clean data
 
@@ -124,12 +140,13 @@ Dates: get week numbers
 
 ```{r cleanDataWeeks}
 # NOTE: THIS IS ONLY FOR 2021 -- need to change method for 2020, or do it separately
-
 endDay <- max(dat$Submission.date.YMD)
 beginDay <- seq(base::as.Date("2021-01-04"), base::as.Date("2021-12-27"), by = 7)
 endDay <- seq(base::as.Date("2021-01-10"), base::as.Date("2022-01-02"), by = 7)
 weeks <- as.data.frame(cbind(weekBegin = beginDay, weekEnd = endDay, week = 1:52))
 
+# Note: weeks numbers can be obtained with 
+# > format(as.Date("2021-08-13"), "%W")
 
 # Assign weeks
   # Initialize week numbers
@@ -174,10 +191,16 @@ names(dat)
 # Load dictionnary to convert region names
 infoRegion <- read.csv("data_public/correspondance_regions.csv")
 
-# Check that we have all names
-rr <- unique(dat$region)
+# Check that we have all names -- focusing on Metropole
+rr <- unique(dat[dat$metropole, "region"])
 rr <- rr[!is.na(rr)]
 all(is.element(rr, infoRegion$Region_on_GISAID))
+
+# If FALSE, which ones are we missing?
+if(!all(is.element(rr, infoRegion$Region_on_GISAID))){
+  rr[which(!is.element(rr, infoRegion$Region_on_GISAID))]
+}
+
 stopifnot(is.element(rr, infoRegion$Region_on_GISAID))
 
 # Convert into dictionnary
@@ -191,54 +214,10 @@ dat$oldRegion <- dat$region
 dat$region <- dic.regnames[dat$oldRegion]
 
 regions <- sort(unique(dat$region))
+
+# For DROM, information is in Country instead
 ```
 
-
-```{r cleanDataLocations, echo = FALSE, results = 'hide', eval = FALSE}
-## Old version -- kept for legacy, but not used anymore
-
-# Extract locations
-# Reformat locations: 
-# 1) Remove spaces
-locs <- gsub(" ", "", dat$Location)
-# 2) Convert to upper case
-locs <- toupper(locs)
-# 3) Remove dashes
-locs <- gsub("-", "", locs)
-locs <- gsub("_", "", locs)
-# 4) Remove some accents
-#    A 
-for(char in c("À", "Â", "Ä")){
-  locs <- gsub(char, "A", locs)
-}
-#    E 
-for(char in c("È", "É", "Ê")){
-  locs <- gsub(char, "E", locs)
-}
-#    I 
-for(char in c("Î")){
-  locs <- gsub(char, "I", locs)
-}
-#    O 
-for(char in c("Ô")){
-  locs <- gsub(char, "O", locs)
-}
-
-# Split locations
-# Locations are presented as a single string, which we split
-locs <- strsplit(locs, "/")
-# The strings are of different lengths / precision; get length (number of geographic divisions)
-lenlocs <- sapply(locs, length)
-table(lenlocs)
-# Turn into matrix, filling with NAs
-# Source: https://stackoverflow.com/a/15201690
-mat <- as.data.frame(t(sapply(locs, "[", i = 1:max(lenlocs))))
-names(mat) <- c("continent", "country", "region", "div4", "div5")
-dat <- cbind(dat, mat)
-# Also add information about location precision
-dat <- cbind(dat, locationLength = lenlocs)
-names(dat)
-```
 
 Hosts
 
@@ -250,10 +229,11 @@ dat[dat$Host == "human", "Host"] <- "Human"
 ## Flash
 
 Load Flash dates
+Available on <https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france>
+
 
 ```{r}
-datesFlash <- read.csv("../gisaid_covid/data/datesFlash.csv", stringsAsFactors = FALSE, header = FALSE)
-names(datesFlash) <- c("FlashNb", "date", "date2", "week")
+datesFlash <- read.csv("data_public/datesFlash.csv", stringsAsFactors = FALSE)
 datesFlash.all <- datesFlash
 # Remove Flash 1 and 2, which were not on a random sample
 datesFlash <- datesFlash[datesFlash$FlashNb >=3 , ]
@@ -312,11 +292,7 @@ totFlash.noOM
 
 ```{r}
 table(country = dat$country)
-# Keep only mainland France
-dat <- dat[dat$country == "France", ]
 ```
-
-There are `r nrow(dat)` samples with location in France. 
 
 Get submitter information from Virus name
 
@@ -392,6 +368,8 @@ rbind(missing_age = tt, tot_seq = totSeq[names(tt)])
 Distribution of ages  
 ```{r}
 par(las = 1)
+range(dat$Patient.age, na.rm = TRUE)
+dat[which(dat$Patient.age >120), "Patient.age"] <- NA
 hist(dat$Patient.age, xlab = "Patient age", main = "Distribution of patient ages", breaks = seq(0, max(dat$Patient.age, na.rm = TRUE), by = 1), border = gray(1, 1), col = cols[1])
 ```
 
@@ -501,6 +479,27 @@ mtext("Semaine de soumission", side = 1, line = 1.25)
 ```
 
 
+### Submitters x Collection dates
+
+```{r}
+dat2 <- dat[order(dat$Collection.date.YMD), ]
+dat2 <- dat2[dat2$Collection.date.Y == 2021,]
+
+# Add phantom lab with all days
+alldates <- seq(as.Date("2021-01-01"), as.Date(max(dat2$Collection.date.YMD, na.rm = TRUE)), by = "day")
+
+phantom <- data.frame(matrix(rep(NA, length(alldates)*ncol(dat)), byrow = TRUE, nrow = length(alldates)))
+names(phantom) <- names(dat)
+phantom$Collection.date.YMD <- alldates
+phantom$submitter <- "Submitter"
+dat3 <- rbind(dat2, phantom)
+xx <- table(dat3$submitter, as.Date(dat3$Collection.date.YMD))
+
+# diff(as.Date(unique(as.data.frame(xx)$Var2)))
+heatmap(table(dat3$submitter, as.Date(dat3$Collection.date.YMD)), Rowv = NA, Colv = NA, scale = "none", col = gray(seq(1, 0, by = -0.01)))
+```
+
+
 ### Focus IHU
 
 ## IHU 
@@ -511,10 +510,11 @@ subIHU <- dat[dat$submitter == "IHU", ]
 
 is.short <- (subIHU$Sequence.length < 5000)
 missing.day <- (is.na(subIHU$Collection.date.YMD))
+missing.month <- (is.na(subIHU$Collection.date.YM))
 
 length(is.short)
 length(missing.day)
-aggregate(subIHU$Virus.name, by = list(Sanger = is.short, missingDay = missing.day), FUN = length)
+aggregate(subIHU$Virus.name, by = list(Sanger = is.short, missingDay = missing.day, missingMonth = missing.month), FUN = length)
 
 sum(!is.short)
 
@@ -522,7 +522,7 @@ subIHU.NGS.missingday <- subIHU[!is.short & missing.day, ]
 
 nrow(subIHU.NGS.missingday)
 
-write.csv(subIHU.NGS.missingday[, c("Virus.name", "Accession.ID", "Collection.date", "Submission.date")], file = "../data/Export_IHU_NGS-missingCollectionDate.csv")
+write.csv(subIHU.NGS.missingday[, c("Virus.name", "Accession.ID", "Collection.date", "Submission.date")], file = "data/Export_IHU_NGS-missingCollectionDate.csv")
 
 head(subIHU.NGS.missingday)
 
@@ -536,12 +536,19 @@ tt/totSeq[names(tt)]
 
 ```{r}
 unique(subIHU$Submission.date.YMD)
+table(subIHU$Submission.date.YMD)
 
 subIHU.mostrecent <- subIHU[which(subIHU$Submission.date.YMD == max(subIHU$Submission.date.YMD)),]
+```
 
-table(subIHU.mostrecent$Submission.date.YMD)
 
-table(subIHU.mostrecent$Collection.date.YMD)
+```{r}
+dataset <- subIHU[subIHU$Collection.date.YMD > "2021-04-01", ]
+
+
+table(dataset$Submission.date.YMD)
+
+table(dataset$Collection.date.YMD)
 
 hist(as.Date(subIHU$Submission.date.YMD), breaks = 500)
 
@@ -549,50 +556,69 @@ hist(as.Date(subIHU$Collection.date.YMD), breaks = 200, freq = TRUE, xlab = "Col
 axis(4)
 
 
-subIHU.mostrecent[10,]
+dataset[10,]
 unique(subIHU$Variant)
 
-unique(subIHU.mostrecent$Location)
-nrow(subIHU.mostrecent)
+unique(dataset$Location)
+nrow(dataset)
 
-subIHU.mostrecent[1,]
+sort(table(dataset$Pango.lineage), decreasing = TRUE)
 
-sort(table(subIHU.mostrecent$Pango.lineage), decreasing = TRUE)
+# Rewrite lineage to only plot the most frequent ones
+thr <- 0.01 # Threshold for number of sequences: percentage of all sequences
+tb <- table(dataset$Pango.lineage) # Number of seqs associated to each lineage
+isFreq <- (tb/sum(tb) > thr) # Identify lineages above the abundance threshold
+cbind(tb, isFreq) # Check
+dataset$newlineage <- dataset$Pango.lineage # Create new column with new lineage
+dataset[!is.element(dataset$newlineage, names(tb[isFreq])), "newlineage"] <- "Other" # Write unfrequent lineages as "Other"
 
-byLin <- aggregate(subIHU.mostrecent$Pango.lineage, by = list(Lineage = subIHU.mostrecent$Pango.lineage, Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
-totdate <- aggregate(subIHU.mostrecent$Pango.lineage, by = list(Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
+byLin <- aggregate(dataset$newlineage, by = list(Lineage = dataset$newlineage, Collection.date = dataset$Collection.date.YMD), FUN = length)
+totdate <- aggregate(dataset$newlineage, by = list(Collection.date = dataset$Collection.date.YMD), FUN = length)
 names(totdate)[2] <- "tot"
 
 byL <- merge(byLin, totdate, by = "Collection.date")
 byL$p <- byL$x / byL$tot
 
+# By month instead of just full collection date
+byLinMonth <- aggregate(dataset$newlineage, by = list(Lineage = dataset$newlineage, Collection.date = dataset$Collection.date.YM), FUN = length)
+totdate <- aggregate(dataset$newlineage, by = list(Collection.date = dataset$Collection.date.YM), FUN = length)
+names(totdate)[2] <- "tot"
 
-byVar <- aggregate(subIHU.mostrecent$VariantShort, by = list(Variant = subIHU.mostrecent$VariantShort, Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
-totdate <- aggregate(subIHU.mostrecent$VariantShort, by = list(Collection.date = subIHU.mostrecent$Collection.date.YMD), FUN = length)
+byLM <- merge(byLinMonth, totdate, by = "Collection.date")
+byLM$p <- byLM$x / byLM$tot
+
+
+
+byVar <- aggregate(dataset$VariantShort, by = list(Variant = dataset$VariantShort, Collection.date = dataset$Collection.date.YMD), FUN = length)
+totdate <- aggregate(dataset$VariantShort, by = list(Collection.date = dataset$Collection.date.YMD), FUN = length)
 names(totdate)[2] <- "tot"
 
 byV <- merge(byVar, totdate, by = "Collection.date")
 byV$p <- byV$x / byV$tot
 
-barplot()
-?barplot
-
 length(unique(byV$Variant))
 
 byL[order(byL$p), ]
-```
+
+# By full collection date
+par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 
+    mar = c(4, 4, 2, 1))
+bL <- barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "topleft", title = "Pango lineage", cex = 1, pt.cex = 2, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10), main = "Lineages by Collection date, IHU")
+
+bLM <- barplot(byLM$x ~ byLM$Lineage + byLM$Collection.date, border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "topleft", title = "Pango lineage", cex = 1, pt.cex = 2, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10), main = "Lineages by Collection month, IHU")
 
 
-```{r}
-par(mfrow = c(1, 1))
-barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
-             xlab = "Collection date", ylab = "Nb sequences", 
-             legend = TRUE, args.legend = list(x = "right", cex = 0.7, pt.cex = 0.9, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10))
 
-par(mar = c(4, 4, 1, 4))
+par(mar = c(4, 4, 1, 4), las = 2)
 barplot(byV$x ~ byV$Variant + byV$Collection.date, border = gray(0, 0), 
              xlab = "Collection date", ylab = "Nb sequences", 
              legend = TRUE, args.legend = list(x = "right", cex = 0.9, pt.cex = 0.9, bty = "n"), col = brewer.pal(length(unique(byV$Variant)), "Set3"))
+
+
 
 
 ```
@@ -612,7 +638,7 @@ dat$VariantShort <- dat$Variant
 
 variants <- sort(unique(dat$Variant))
 # variants
-variantsShort <- c("", "Alpha", "Beta", "Delta", "Gamma", "Epsilon", "Eta", "Iota", "Kappa", "Lambda", "Zeta")
+variantsShort <- c("", "Alpha", "Beta", "Delta", "Gamma", "Eta", "Iota", "Kappa", "Lambda", "Zeta")
 # Check
 rbind(variants, variantsShort)
 
@@ -946,10 +972,14 @@ names(L452R.byweek) <- c("week", "p", "n")
 L452R.byweek$deltaCI <- with(L452R.byweek, 1.96 * sqrt(p * (1-p)/n))
 ```
 
-Which variant harbor the L452R mutation? 
+Which variants harbor the L452R mutation? 
 
 ```{r}
-table(dat[which(dat$Collection.week >= 21 & i.L452R), "VariantShort"])
+tV <- table(dat[which(dat$Collection.week >= 21 & i.L452R), "VariantShort"], useNA = "ifany")
+tV/sum(tV)*100
+
+table(dat[which(dat$Collection.week >= 21 & i.L452R), "Pango.lineage"])
+
 ```
 
 
@@ -979,7 +1009,7 @@ arrows(x0 = dat.France$week, y0 = dat.France$tx_C1/100 + dat.France$deltaCI_C1,
        x1 = dat.France$week, y1 = dat.France$tx_C1/100 - dat.France$deltaCI_C1, 
        code = 3, angle = 90, length = 0.1, col = cols["criblage"])
 
-legend("topleft", col = cols[c("GISAID", "criblage")], legend = c("in GISAID with country = France", "Criblage"), pch = c(16, 18), bty = "n")
+legend("topleft", col = cols[c("GISAID", "criblage")], legend = c("in GISAID", "Criblage"), pch = c(16, 18), bty = "n")
 
 par(xpd = TRUE)
 text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
@@ -1078,5 +1108,49 @@ table(dat[which(dat$Collection.week >= 21 & i.E484K), "VariantShort"])
 
 ```
 
- 
+# DROM
+
+```{r}
+datM <- dat[dat$country == "Martinique", ]
+datG <- dat[dat$country == "Guadeloupe", ]
+
+datM
+
+
+for(col in c("Pango.lineage", "VariantShort")){
+for(ctr in c("Martinique", "Guadeloupe")){
+dataset <- dat[dat$country == ctr, ]
+
+# Extract AA
+tmp <- gsub('\\(', '', dataset$AA.Substitutions)
+tmp <- gsub('\\)', '', tmp)
+aaa <- strsplit(tmp, ",")
+
+# Extract information on whether the S:L452R is present as aa substitution in the sequence
+ii.L452R <- sapply(aaa, function(x){(is.element("Spike_L452R", x))})
+
+cat(ctr, "\n")
+print(table(dataset[which(ii.L452R), "Pango.lineage"]))
+
+byLin <- aggregate(dataset[, col], by = list(Lineage = dataset[, col], Collection.date = dataset$Collection.date.YMD), FUN = length)
+totdate <- aggregate(dataset[, col], by = list(Collection.date = dataset$Collection.date.YMD), FUN = length)
+names(totdate)[2] <- "tot"
+byL <- merge(byLin, totdate, by = "Collection.date")
+byL$p <- byL$x / byL$tot
+byL[order(byL$p), ]
+
+# By full collection date
+par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 
+    mar = c(4, 4, 2, 1))
+bL <- barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "topleft", title = col, cex = 1, pt.cex = 2, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10), main = paste0(col, " by Collection date, ", ctr))
+par(xpd = FALSE)
+for(i in 1:100){
+  abline(h = i, col = gray(1))
+}
+}
+}
+```
+
  
