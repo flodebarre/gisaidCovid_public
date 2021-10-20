@@ -1,13 +1,18 @@
 ---
 title: "France on GISAID"
 author: "FD"
-output: 
+output: pdf_document
+ 
+---
+
+<!--
+Header for html output
   html_document: 
       code_folding: hide
       toc: TRUE
       toc_float: TRUE
-      self_contained: no  
----
+      self_contained: no 
+-->
 
 Document compiled on `r Sys.Date()`.
 
