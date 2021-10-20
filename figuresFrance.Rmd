@@ -1,7 +1,6 @@
 ---
 title: "France on GISAID"
 author: "FD"
-date: 2021-07-21
 output: 
   html_document: 
       code_folding: hide
@@ -9,6 +8,8 @@ output:
       toc_float: TRUE
       self_contained: no  
 ---
+
+Document compiled on `r Sys.Date()`.
 
 # Initializations
 
@@ -24,7 +25,7 @@ options(warn = 2) # Turn warnings into errors to trouble-check
 ```
 
 ```{r}
-# Colors 
+# Colors definitions 
 library(RColorBrewer)
 colsV <- rep(c(brewer.pal(12, "Paired"), brewer.pal(12, "Set3"), brewer.pal(9, "Set1")), 20)
 colsP <- brewer.pal(5, "Set1")
@@ -53,7 +54,7 @@ is.NAempty <- function(x){
 
 # Load and clean data
 
-Data source: `metadata.tsv`, downloaded from [GISAID](https://www.gisaid.org). 
+Data source: `metadata.tsv` file, downloaded from [GISAID](https://www.gisaid.org). 
 
 Then, in console
 ```
@@ -68,7 +69,7 @@ Extracted data for Martinique and Guadeloupe as well (`grep Martinique` and `gre
 ## Load data
 
 ```{r loadData, results = 'hide'}
-thedate <- "2021-08-13"
+thedate <- "2021-10-18"
 # Load France data
 dat <- read.csv(paste0("data/", thedate, "_France.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
 
@@ -85,14 +86,16 @@ dat3$metropole <- FALSE
 dat <- rbind(dat, dat2, dat3)
 
 head(dat)
+# Add names 
+# (names are not in the datafiles because "grep" was used to extract data)
 names(dat) <- c("Virus.name", "Type", "Accession.ID", "Collection.date", "Location", "Additional.location.information", "Sequence.length", "Host", "Patient.age", "Gender", "Clade", "Pango.lineage", "Pangolin.version", "Variant", "AA.Substitutions", "Submission.date", "Is.reference", "Is.complete", "Is.high.coverage", "Is.low.coverage", "N.Content", "GC.Content", "Metropole")
 ```
 
-There are `r nrow(dat)` lines in the dataset; `r sum(dat$Metropole)` for mainland France, `r nrow(dat2)` for Martinique and `nrow(dat3)` for Guadeloupe. 
+There are `r nrow(dat)` lines in the dataset; `r sum(dat$Metropole)` for mainland France, `r nrow(dat2)` for Martinique and `r nrow(dat3)` for Guadeloupe. 
 
 ## Clean data
 
-Dates: full date, year-month and year
+Extract dates: full date, year-month and year
 
 ```{r cleanDataDates, echo = TRUE, results = 'hide'}
 # Reformat dates
@@ -138,15 +141,13 @@ dat$Submission.date.Y <- getY(dat$Submission.date)
 Dates: get week numbers  
 (currently only done for 2021)
 
-```{r cleanDataWeeks}
-# NOTE: THIS IS ONLY FOR 2021 -- need to change method for 2020, or do it separately
+```{r cleanDataWeeks, results = "hide"}
+# Version 1, only for 2021 (hard-coded)
+
 endDay <- max(dat$Submission.date.YMD)
 beginDay <- seq(base::as.Date("2021-01-04"), base::as.Date("2021-12-27"), by = 7)
 endDay <- seq(base::as.Date("2021-01-10"), base::as.Date("2022-01-02"), by = 7)
 weeks <- as.data.frame(cbind(weekBegin = beginDay, weekEnd = endDay, week = 1:52))
-
-# Note: weeks numbers can be obtained with 
-# > format(as.Date("2021-08-13"), "%W")
 
 # Assign weeks
   # Initialize week numbers
@@ -160,6 +161,25 @@ for(iw in weeks$week){
   # Submission week
   dat[which(base::as.Date(dat$Submission.date.YMD) >= base::as.Date(weeks[iw, "weekBegin"], origin = "1970-01-01") & base::as.Date(dat$Submission.date.YMD) <= base::as.Date(weeks[iw, "weekEnd"], origin = "1970-01-01")), "Submission.week"] <- iw
 }
+
+#-------------------------------------
+# Version 2, using `format`
+
+dat$Collection.date.wk <- format(as.Date(dat$Collection.date.YMD), "%W")
+dat$Submission.date.wk <- format(as.Date(dat$Submission.date.YMD), "%W")
+
+dat$Collection.Ywk <- paste0(dat$Collection.date.Y, "-", dat$Collection.date.wk)
+dat$Submission.Ywk <- paste0(dat$Submission.date.Y, "-", dat$Submission.date.wk)
+
+sort(unique(dat$Collection.Ywk))
+
+# A sequence with an odd date
+dat[dat$Collection.Ywk == "2020-00", ]
+
+# Check weeks in the two versions
+plot(dat$Collection.week, dat$Collection.date.wk, 
+     xlab = "week, version 1", ylab = "week, version 2", main = "Consistency check")
+abline(a = 0, b = 1)
 ```
 
 Difference between submission and collection dates
@@ -172,23 +192,25 @@ Locations:
 
 Try to get some uniformity automatically because some spellings differ
 
-```{r}
+```{r, results = 'hide'}
 # Split locations
+
 # Locations are presented as a single string, which we split
 locs <- strsplit(dat$Location, " / ")
 # The strings are of different lengths / precision; get length (number of geographic divisions)
 lenlocs <- sapply(locs, length)
 table(lenlocs)
+
 # Turn into matrix, filling with NAs
 # Source: https://stackoverflow.com/a/15201690
 mat <- as.data.frame(t(sapply(locs, "[", i = 1:max(lenlocs))))
 names(mat) <- c("continent", "country", "region", "div4", "div5")
+# Add the dataset
 dat <- cbind(dat, mat)
 # Also add information about location precision
 dat <- cbind(dat, locationLength = lenlocs)
-names(dat)
 
-# Load dictionnary to convert region names
+# Load dictionary to convert region names
 infoRegion <- read.csv("data_public/correspondance_regions.csv")
 
 # Check that we have all names -- focusing on Metropole
@@ -201,9 +223,10 @@ if(!all(is.element(rr, infoRegion$Region_on_GISAID))){
   rr[which(!is.element(rr, infoRegion$Region_on_GISAID))]
 }
 
+# Stop if we are missing names
 stopifnot(is.element(rr, infoRegion$Region_on_GISAID))
 
-# Convert into dictionnary
+# Convert into dictionary
 dic.regnames <- c(infoRegion$region)
 names(dic.regnames) <- infoRegion$Region_on_GISAID
 
@@ -215,9 +238,8 @@ dat$region <- dic.regnames[dat$oldRegion]
 
 regions <- sort(unique(dat$region))
 
-# For DROM, information is in Country instead
+# Note: For DROM, information is in Country instead
 ```
-
 
 Hosts
 
@@ -226,11 +248,77 @@ Hosts
 dat[dat$Host == "human", "Host"] <- "Human"
 ```
 
-## Flash
+
+### Variants
+
+Use short names  
+**Needs to be manually checked from time to time**
+
+```{r}
+# Initialize new column
+dat$VariantShort <- dat$Variant
+
+# Current variants in GISAID
+variants <- sort(unique(dat$Variant))
+
+# Short versions of the names
+variantsShort <- c("", "Alpha", "Beta", "Delta", "Gamma", "Lambda", "Mu")
+
+# Check consistency
+cbind(variants, variantsShort)
+
+# Assign shorter name
+for(i in seq_along(variants)){
+  dat[which(dat$Variant == variants[i]), "VariantShort"] <- variantsShort[i]
+}
+
+```
+
+### Submitters
+
+Get submitter information from Virus name
+
+```{r}
+# Find lines with the 3-letter code of each platform
+ipp <- grep(dat$Virus.name, pattern = "IPP")
+hcl <- grep(dat$Virus.name, pattern = "HCL")
+ihu <- grep(dat$Virus.name, pattern = "IHU")
+hmn <- grep(dat$Virus.name, pattern = "HMN")
+
+# Assign submitter names
+dat$submitter <- rep("autre", nrow(dat))
+dat[ipp, "submitter"] <- "IPP"
+dat[hcl, "submitter"] <- "HCL"
+dat[ihu, "submitter"] <- "IHU"
+dat[hmn, "submitter"] <- "HMN"
+
+# Show total number of sequences per submitter
+table(dat$submitter, useNA = "ifany")
+
+# Just the list of submitter names
+submitters <- sort(unique(dat$submitter))
+```
+
+### Countries 
+
+```{r, results = "hide"}
+# Check countries
+table(country = dat$country)
+```
+
+
+```{r, results = "hide"}
+dat[dat$country == "Switzerland", ]
+# Seems to have been sequenced in France but to come from Switzerland
+# -> Remove it
+dat <- dat[which(dat$country != "Switzerland"), ]
+```
+
+
+## Enquêtes Flash
 
 Load Flash dates
 Available on <https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france>
-
 
 ```{r}
 datesFlash <- read.csv("data_public/datesFlash.csv", stringsAsFactors = FALSE)
@@ -240,18 +328,19 @@ datesFlash <- datesFlash[datesFlash$FlashNb >=3 , ]
 ```
 
 Flash data 
-Typed from <https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france#block-337272>, accessed 2021-07-21
+Typed from pdfs available on <https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france#block-337272>, accessed 2021-07-21
 
-```{r}
+```{r, results = "hide"}
 dat.Flash <- read.csv("data_public/2021-07-21_Flash.csv")
 head(dat.Flash)
 
+# Add confidence interval for Delta
 dat.Flash$deltaCI <- 1.96 * sqrt(dat.Flash$Proportion * (1 - dat.Flash$Proportion) / dat.Flash$NbPrelevSeq)
 ```
 
-Specific Flash data
+Specific Flash data (for Beta) -- extracted by hand from the pdfs
 
-```{r}
+```{r, results = "hide"}
 # Load Flash 11 data
 flash11 <- read.csv("data_public/Flash11_Beta.csv")
 flash11 <- flash11[flash11$Region != "Total", ]
@@ -290,34 +379,15 @@ totFlash.noOM
 ```
 
 
-```{r}
-table(country = dat$country)
-```
-
-Get submitter information from Virus name
-
-```{r}
-ipp <- grep(dat$Virus.name, pattern = "IPP")
-hcl <- grep(dat$Virus.name, pattern = "HCL")
-ihu <- grep(dat$Virus.name, pattern = "IHU")
-hmn <- grep(dat$Virus.name, pattern = "HMN")
-
-
-dat$submitter <- rep("autre", nrow(dat))
-dat[ipp, "submitter"] <- "IPP"
-dat[hcl, "submitter"] <- "HCL"
-dat[ihu, "submitter"] <- "IHU"
-dat[hmn, "submitter"] <- "HMN"
-
-table(dat$submitter, useNA = "ifany")
-
-submitters <- sort(unique(dat$submitter))
-```
 
 
 # Sequence metadata 
 
-Dates
+Check completeness of the different fields 
+
+## Dates and locations
+
+### Dates
 
 -  The fraction of samples with missing full day of collection is `r round(mean(is.na(dat$Collection.date.YMD)), 2)`  
 
@@ -326,10 +396,11 @@ Distribution of samples with incomplete collection date information, by submitte
 totSeq <- table(dat$submitter)
 tt <- table(dat[which(is.na(dat$Collection.date.YMD)), "submitter"])
 
-rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
+tmp <- rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_incomplete_collectionDate = round(tmp[1, ]/tmp[2, ], 4))
 ```
 
-Location 
+### Location 
 
 -  The fraction of samples with missing regional information is `r round(mean(is.na(dat$region)), 2)`
 
@@ -337,17 +408,21 @@ Distribution of entries with incomplete location, by submitter
 ```{r}
 tt <- table(dat[which(is.na(dat$region)), "submitter"])
 
-rbind(missing_region = tt, tot_seq = totSeq[names(tt)])
+tmp <- rbind(missing_region = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_missing_region = round(tmp[1, ]/tmp[2, ], 4))
 ```
 
 ## Metadata on hosts
+
+### Type of host
 
 ```{r}
 # Hosts
 table(dat$Host)
 ```
 
-Age  
+### Age  
+
 ```{r}
 # Age
 dat[which(is.element(dat$Patient.age, c("unknown", "Unknown"))), "Patient.age"] <- NA
@@ -362,7 +437,8 @@ The fraction of samples with missing or incorrect age information is `r round(me
 Missing age by submitter  
 ```{r}
 tt <- table(dat[which(is.na(dat$Patient.age)), "submitter"])
-rbind(missing_age = tt, tot_seq = totSeq[names(tt)])
+tmp <- rbind(missing_age = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_missing_age = round(tmp[1, ]/tmp[2, ], 4))
 ```
 
 Distribution of ages  
@@ -372,6 +448,37 @@ range(dat$Patient.age, na.rm = TRUE)
 dat[which(dat$Patient.age >120), "Patient.age"] <- NA
 hist(dat$Patient.age, xlab = "Patient age", main = "Distribution of patient ages", breaks = seq(0, max(dat$Patient.age, na.rm = TRUE), by = 1), border = gray(1, 1), col = cols[1])
 ```
+
+Odd ages
+
+-  119 yo  
+
+Who submitted data with this age?
+```{r}
+table(dat[which(dat$Patient.age == 119), "submitter"])
+```
+
+When were they submitted?
+
+```{r}
+table(dat[which(dat$Patient.age == 119), "Submission.date"])
+```
+
+-  0 yo
+
+Who submitted data with this age?
+
+```{r}
+table(dat[which(dat$Patient.age == 0), "submitter"])
+```
+
+When were they submitted?
+
+```{r}
+table(dat[which(dat$Patient.age == 0), "Submission.date"])
+```
+
+### Sex
 
 "Gender" information  
 ```{r, results = 'hide'}
@@ -385,19 +492,16 @@ table(dat$Gender, useNA = "ifany")
 
 ```{r}
 # Distribution by submitter
-rbind(missing_age = table(dat[which(is.na(dat$Gender)), "submitter"]), tot_seq = table(dat$submitter))
+tt <- table(dat[which(is.na(dat$Gender)), "submitter"])
+tmp <- rbind(missing_sex = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_missing_sex = round(tmp[1, ]/tmp[2, ], 4))
 ```
 
 ## Virus
 
 
-```{r}
-# "Clade"                           "Pango.lineage"         
-# "Pangolin.version"                "Variant"                 
-# "AA.Substitutions"
-```
+GISAID Clades  
 
-Clades  
 ```{r}
 table(dat$Clade, useNA = "ifany")
 ```
@@ -434,6 +538,7 @@ par(xpd = FALSE)
 ```
 
 By platform, by week
+
 ```{r, fig.height=10}
 # By collection week
 tabFRsub.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subweek = dat$Collection.week), FUN = length)
@@ -443,7 +548,7 @@ tabFRsubS.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, s
 names(tabFRsubS.byweek)[3] <- "bySubmissionDate"
 
 seq.byWeek <- merge(tabFRsub.byweek, tabFRsubS.byweek, all = TRUE)
-ymax <- 6000
+ymax <- 10000
 
 seq.byWeek[is.na(seq.byWeek$byCollectionDate), "byCollectionDate"] <- 0
 seq.byWeek[is.na(seq.byWeek$bySubmissionDate), "bySubmissionDate"] <- 0
@@ -475,7 +580,6 @@ x2 <- barplot(seq.byWeek$bySubmissionDate ~ seq.byWeek$subID + seq.byWeek$subwee
              main = "Par semaine de soumission", xaxs = "i", yaxs = "i", ylim = c(0, ymax))
 legend("topleft", col = rev(colsP), legend = rev(names(colsP)), pch = 15, bty = "n")
 mtext("Semaine de soumission", side = 1, line = 1.25)
-
 ```
 
 
@@ -502,47 +606,51 @@ heatmap(table(dat3$submitter, as.Date(dat3$Collection.date.YMD)), Rowv = NA, Col
 
 ### Focus IHU
 
-## IHU 
-
 ```{r}
 # All sequences
 subIHU <- dat[dat$submitter == "IHU", ]
+```
 
+
+```{r}
 is.short <- (subIHU$Sequence.length < 5000)
 missing.day <- (is.na(subIHU$Collection.date.YMD))
 missing.month <- (is.na(subIHU$Collection.date.YM))
 
-length(is.short)
-length(missing.day)
 aggregate(subIHU$Virus.name, by = list(Sanger = is.short, missingDay = missing.day, missingMonth = missing.month), FUN = length)
-
-sum(!is.short)
-
-subIHU.NGS.missingday <- subIHU[!is.short & missing.day, ]
-
-nrow(subIHU.NGS.missingday)
-
-write.csv(subIHU.NGS.missingday[, c("Virus.name", "Accession.ID", "Collection.date", "Submission.date")], file = "data/Export_IHU_NGS-missingCollectionDate.csv")
-
-head(subIHU.NGS.missingday)
-
-table(subIHU.NGS.missingday$Submission.date.YMD)
-
-totSeq <- table(dat$submitter)
-tt <- table(dat[which(is.na(dat$Collection.date.YMD)), "submitter"])
-rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
-tt/totSeq[names(tt)]
 ```
 
+
 ```{r}
-unique(subIHU$Submission.date.YMD)
+# Subset of data with full seqs and missing days
+subIHU.NGS.missingday <- subIHU[!is.short & missing.day, ]
+
+# Export data with missing day
+write.csv(subIHU.NGS.missingday[, c("Virus.name", "Accession.ID", "Collection.date", "Submission.date")], file = "data/Export_IHU_NGS-missingCollectionDate.csv")
+```
+
+Submission dates of the data with missing full dates
+
+```{r}
+table(subIHU.NGS.missingday$Submission.date.YMD)
+```
+
+```{r, results = "hide"}
+# IHU submission dates
 table(subIHU$Submission.date.YMD)
 
 subIHU.mostrecent <- subIHU[which(subIHU$Submission.date.YMD == max(subIHU$Submission.date.YMD)),]
 ```
 
+Locations in the IHU dataset
 
 ```{r}
+table(subIHU$Location)
+
+```
+
+```{r, results = "hide"}
+# Focus on recent submissions
 dataset <- subIHU[subIHU$Collection.date.YMD > "2021-04-01", ]
 
 
@@ -550,19 +658,12 @@ table(dataset$Submission.date.YMD)
 
 table(dataset$Collection.date.YMD)
 
-hist(as.Date(subIHU$Submission.date.YMD), breaks = 500)
+hist(as.Date(subIHU$Submission.date.YMD), breaks = 500, main = "Submission dates", xlab = "Submission dates")
 
-hist(as.Date(subIHU$Collection.date.YMD), breaks = 200, freq = TRUE, xlab = "Collection date", main = "Collection dates, IHU", col = gray(0.9))
+hist(as.Date(subIHU$Collection.date.YMD), breaks = 500, freq = TRUE, xlab = "Collection date", main = "Collection dates, IHU", col = gray(0.9))
 axis(4)
 
-
-dataset[10,]
-unique(subIHU$Variant)
-
-unique(dataset$Location)
-nrow(dataset)
-
-sort(table(dataset$Pango.lineage), decreasing = TRUE)
+table(subIHU$Collection.date.YM)
 
 # Rewrite lineage to only plot the most frequent ones
 thr <- 0.01 # Threshold for number of sequences: percentage of all sequences
@@ -596,10 +697,12 @@ names(totdate)[2] <- "tot"
 byV <- merge(byVar, totdate, by = "Collection.date")
 byV$p <- byV$x / byV$tot
 
-length(unique(byV$Variant))
 
 byL[order(byL$p), ]
+```
 
+
+```{r}
 # By full collection date
 par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 
     mar = c(4, 4, 2, 1))
@@ -624,33 +727,204 @@ barplot(byV$x ~ byV$Variant + byV$Collection.date, border = gray(0, 0),
 ```
 
 
+What about recent submissions
 
-# Lineages over time
+```{r, results = "hide"}
+tmp <- subIHU[subIHU$Submission.date.YM >= "2021-10", ]
+dim(tmp)
 
+table(tmp$Submission.date)
 
+table(tmp$Collection.date)
 
-## Variants
-
-Use short names
-
-```{r}
-dat$VariantShort <- dat$Variant
-
-variants <- sort(unique(dat$Variant))
-# variants
-variantsShort <- c("", "Alpha", "Beta", "Delta", "Gamma", "Eta", "Iota", "Kappa", "Lambda", "Zeta")
-# Check
-rbind(variants, variantsShort)
-
-# Assign shorter name
-for(i in seq_along(variants)){
-  dat[which(dat$Variant == variants[i]), "VariantShort"] <- variantsShort[i]
-}
+table(subIHU$Collection.date)
 
 ```
 
 
-Load TESSy
+
+# Lineages over time
+
+## All lineages, histograms
+
+### Pango clades 
+
+```{r}
+tabFR <- aggregate(dat$Virus.name, by = list(pango = dat$Pango.lineage, subM = dat$Collection.date.YM), FUN = length)
+
+tabFR.month <- aggregate(dat$Virus.name, by = list(subM = dat$Collection.date.YM), FUN = length)
+
+x <- barplot(tabFR$x ~ tabFR$pango + tabFR$subM, col = colsV[1:(length(unique(tabFR$pango)))], border = gray(0, 0), 
+             xlab = "Collection month", ylab = "Nb sequences")
+
+nV <- 6
+par(xpd = TRUE)
+text(rep(x[length(x)] + (x[2]-x[1])/2, nV), tmp[1:nV, "cumx"] - tmp[1:nV, "x"]/2, labels = tmp[1:nV, "pango"], 
+     adj = 0)
+
+text(x, y = tabFR.month$x, tabFR.month$x, adj = c(0.5, -1), cex = 0.8)
+par(xpd = FALSE)
+```
+
+With threshold to plot lineage
+
+```{r, results = "hide"}
+# Rewrite lineage to only plot the most frequent ones
+thr <- 0.01 # Threshold for number of sequences: percentage of all sequences
+tb <- table(dat$Pango.lineage) # Number of seqs associated to each lineage
+isFreq <- (tb/sum(tb) > thr) # Identify lineages above the abundance threshold
+cbind(tb, isFreq) # Check
+dat$newlineage <- dat$Pango.lineage # Create new column with new lineage
+dat[!is.element(dat$newlineage, names(tb[isFreq])), "newlineage"] <- "Other" # Write unfrequent lineages as "Other"
+```
+
+
+```{r}
+byLin <- aggregate(dat$newlineage, by = list(Lineage = dat$newlineage, Collection.date = dat$Collection.date.YMD), FUN = length)
+totdate <- aggregate(dat$newlineage, by = list(Collection.date = dat$Collection.date.YMD), FUN = length)
+names(totdate)[2] <- "tot"
+
+byL <- merge(byLin, totdate, by = "Collection.date")
+byL$p <- byL$x / byL$tot
+
+# By week
+byWeek <- aggregate(dat$newlineage, by = list(Lineage = dat$newlineage, Collection.Ywk = dat$Collection.Ywk), FUN = length)
+totdate <- aggregate(dat$newlineage, by = list(Collection.Ywk = dat$Collection.Ywk), FUN = length)
+names(totdate)[2] <- "tot"
+
+byW <- merge(byWeek, totdate, by = "Collection.Ywk")
+byW$p <- byW$x / byW$tot
+
+# By month instead of just full collection date
+byLinMonth <- aggregate(dat$newlineage, by = list(Lineage = dat$newlineage, Collection.date = dat$Collection.date.YM), FUN = length)
+totdate <- aggregate(dat$newlineage, by = list(Collection.date = dat$Collection.date.YM), FUN = length)
+names(totdate)[2] <- "tot"
+
+byLM <- merge(byLinMonth, totdate, by = "Collection.date")
+byLM$p <- byLM$x / byLM$tot
+
+
+
+byVar <- aggregate(dat$VariantShort, by = list(Variant = dat$VariantShort, Collection.date = dat$Collection.date.YMD), FUN = length)
+totdate <- aggregate(dat$VariantShort, by = list(Collection.date = dat$Collection.date.YMD), FUN = length)
+names(totdate)[2] <- "tot"
+
+byV <- merge(byVar, totdate, by = "Collection.date")
+byV$p <- byV$x / byV$tot
+
+length(unique(byV$Variant))
+
+#byL[order(byL$p), ]
+
+# By full collection date
+par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 
+    mar = c(4, 4, 2, 1))
+bL <- barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "topleft", title = "Pango lineage", cex = 1, pt.cex = 2, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10), main = "Lineages by Collection date")
+
+# By week
+# Remove "2021-NA"
+byW <- byW[!is.element(byW$Collection.Ywk, c("2020-NA", "2021-NA")),]
+
+bW <- barplot(byW$x ~ byW$Lineage + byW$Collection.Ywk, border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "topleft", title = "Pango lineage", cex = 1, pt.cex = 2, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10), main = "Lineages by Collection week")
+
+# As proportions
+barplot(byW$p ~ byW$Lineage + byW$Collection.Ywk, border = gray(0, 0), xlim = c(0, 150), 
+             xlab = "", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "right", title = "Pango lineage", cex = 1, pt.cex = 2, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10), main = "Lineages by Collection week")
+
+
+# By month
+bLM <- barplot(byLM$x ~ byLM$Lineage + byLM$Collection.date, border = gray(0, 0), 
+             xlab = "", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "topleft", title = "Pango lineage", cex = 1, pt.cex = 2, bty = "n"), col = rep(brewer.pal(9, "Set1"), 10), main = "Lineages by Collection month")
+
+
+
+par(mar = c(4, 4, 1, 4), las = 2)
+barplot(byV$x ~ byV$Variant + byV$Collection.date, border = gray(0, 0), 
+             xlab = "Collection date", ylab = "Nb sequences", 
+             legend = TRUE, args.legend = list(x = "right", cex = 0.9, pt.cex = 0.9, bty = "n"), col = brewer.pal(length(unique(byV$Variant)), "Set3"))
+
+
+
+
+```
+
+### Variants
+
+```{r}
+subFRVar <- aggregate(dat$Virus.name, by = list(month = dat$Collection.date.YM, variant = dat$VariantShort), FUN = length)
+subFRVar.month <- aggregate(dat$Virus.name, by = list(month = dat$Collection.date.YM), FUN = length)
+
+x <- barplot(subFRVar$x ~ subFRVar$variant + subFRVar$month, col = colsV2[1:(length(unique(subFRVar$variant)))], border = gray(0, 0), 
+             xlab = "Collection month", ylab = "Nb sequences", legend = TRUE, xlim= c(0, 30), args.legend = list(x = "right", cex = 0.7, pt.cex = 0.9, bty = "n"))
+#legend(x = "topleft", legend = rev(unique(subFRVar$variant)), col = rev(colsV2[1:(length(unique(subFRVar$variant)))]), pch = 15, box.col = gray(0, 0), box.lwd = -1)
+
+```
+
+2021
+
+
+```{r}
+subFRVar <- aggregate(dat$Virus.name, by = list(week = dat$Collection.week, variant = dat$VariantShort), FUN = length)
+subFRVar.week <- aggregate(dat$Virus.name, by = list(week = dat$Collection.week), FUN = length)
+
+subFRVar2 <- merge(subFRVar, subFRVar.week, by = "week")
+names(subFRVar2)[c(3,4)] <- c("x", "nbSeq")
+subFRVar2$prop <- subFRVar2$x / subFRVar2$nbSeq
+
+# Consistency check 
+# aggregate(subFRVar2[, 3], by = list(subFRVar2$week), FUN= sum) - subFRVar.week
+
+x <- barplot(subFRVar$x ~ subFRVar$variant + subFRVar$week, col = colsV2[1:(length(unique(subFRVar$variant)))], border = gray(0, 0), 
+             xlab = "Collection week", ylab = "Nb sequences", 
+             legend = TRUE, xlim= c(0, 50), args.legend = list(x = "right", cex = 0.7, pt.cex = 0.9, bty = "n"))
+#legend(x = "topleft", legend = rev(unique(subFRVar$variant)), col = rev(colsV2[1:(length(unique(subFRVar$variant)))]), pch = 15, box.col = gray(0, 0), box.lwd = -1)
+```
+
+#### Proportion
+
+```{r}
+# Remove week if too few sequences
+thrNbSeq <- 100
+subFRVar2 <- subFRVar2[subFRVar2$nbSeq > thrNbSeq, ]
+
+nbW <- length(unique(subFRVar2$week))
+# Proportion 
+x <- barplot(subFRVar2$prop ~ subFRVar2$variant + subFRVar2$week, col = colsV2[1:(length(unique(subFRVar2$variant)))], border = gray(0, 0), 
+             xlab = "Collection week", ylab = "Proportion parmi les sequences", 
+             legend = TRUE, xlim= c(0, 55), args.legend = list(x = "right", cex = 0.7, pt.cex = 0.9, bty = "n"), width = rep(1, nbW))
+
+par(xpd = TRUE)
+yy <- 1
+adjy <- -0.5
+cexx <- 0.6
+# text(x, y = yy, labels = subFRVar.week$x, adj = c(0.5, adjy), cex = cexx)
+# text(x = max(x) + x[2] - x[1], y = yy, adj = c(0, adjy), cex = cexx, labels = "Nb sequences")
+
+posW <- as.data.frame(cbind(x = x, week = subFRVar.week$week))
+posWFlash <- posW[is.element(posW$week, datesFlash.all$week), ]
+yFlash <- 1.09
+text(x = c(posWFlash$x), 
+     y = yFlash, adj = c(0.5, 2), 
+     labels = "*")
+text(x = max(x) + x[2] - x[1], y = yFlash, adj = c(0, 2), labels = "Semaine Flash", cex = cexx)
+
+axis(4, pos = max(x) + (x[2] - x[1])/2)
+par(xpd = FALSE)
+
+mtext(side = 1, "@flodebarre, données Gisaid", line = 3.5, adj = 0, cex = 0.6, col = gray(0.5), las = 1)
+```
+
+
+## 
+
+
+Load TESSy data
 
 ```{r}
 dlData <- FALSE # Whether to download the data again from the ECDC website
@@ -660,7 +934,7 @@ source("TESSy.R")
 
 ## Beta
 
-```{r}
+```{r, results = "hide"}
 tessy.Beta <- (dat.tessy.FR$variant == "B.1.351")
 tmp <- dat.tessy.FR[tessy.Beta, ]
 
@@ -711,8 +985,8 @@ par(mfrow = c(1,1))
 
 # Version 2 with sublineages
 is.Beta <- (substr(dat$Pango.lineage, 1, 7) == "B.1.351")
-sum(is.Beta)
-mean(is.Beta)
+#sum(is.Beta)
+#mean(is.Beta)
 
 # Aggregate the data by week of collection
 tmp.mean <- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = mean)
@@ -793,7 +1067,7 @@ This is `r mean(is.Beta[which(dat$Collection.date.YM >= "2021-05")])` of sequenc
 This is `r mean(is.Beta[which(dat$Collection.date.YM >= "2021-06")])` of sequences collected since June (included)
 
 
-```{r}
+```{r, results = "hide"}
 tessyBeta.byweek
 
 sum(tessyBeta.byweek$nBeta)
@@ -802,13 +1076,13 @@ sum(tessyBeta.byweek$nBeta)/sum(tessyBeta.byweek$n)
 sum(unique(dat.tessy.FR$number_sequenced))
 ```
 
-### Details on the Beta
+### Details on the Beta variant
 
-```{r}
+```{r, results = "hide"}
 dat.Beta <- dat[which(is.Beta), ]
 
 table(dat.Beta$submitter)
-head(dat.Beta)
+#head(dat.Beta)
 
 tt <- table(dat.Beta[which(is.na(dat.Beta$Collection.date.YMD)), "submitter"])
 tt
@@ -919,7 +1193,7 @@ system(paste0("open ", fname))
 ```
 
 IDF in May
-```{r}
+```{r, results = "hide"}
 sub <- dat[which(dat$region == "Île-de-France" & is.Beta), ]
 
 table(sub$submitter, sub$Pango.lineage)
@@ -933,7 +1207,6 @@ table(sub$div4, useNA = "ifany")
 table(dat$region, dat$submitter)
 ```
 
-## Delta 
 
 # AA changes
 
@@ -977,7 +1250,11 @@ Which variants harbor the L452R mutation?
 ```{r}
 tV <- table(dat[which(dat$Collection.week >= 21 & i.L452R), "VariantShort"], useNA = "ifany")
 tV/sum(tV)*100
+```
 
+Pango lineages with the L452R mutation
+
+```{r}
 table(dat[which(dat$Collection.week >= 21 & i.L452R), "Pango.lineage"])
 
 ```
@@ -986,6 +1263,8 @@ table(dat[which(dat$Collection.week >= 21 & i.L452R), "Pango.lineage"])
 ```{r}
 dat.France$deltaCI_C1 <- 1.96 * sqrt(dat.France$tx_C1/100 * (1-dat.France$tx_C1/100) / (dat.France$nb_C1 + dat.France$nb_C0))
 ```
+
+Comparison of the frequency of L452R in GISAID vs criblage
 
 ```{r}
 
@@ -1016,7 +1295,9 @@ text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1),
 ```
 
 
-Que se passe-t-il en semaine 24-25 ? Nombres de sequences par regions
+Que se passe-t-il en semaine 24-25, pourquoi un tel écart ? Etait-ce un focus sur certaines regions ? 
+
+Nombres de sequences par regions
 
 ```{r}
 tmp25 <- dat[which(i.L452R & dat$Collection.week == 25), ]
@@ -1045,6 +1326,7 @@ names(E484K.byweek) <- c("week", "p", "n")
 E484K.byweek$deltaCI <- with(E484K.byweek, 1.96 * sqrt(p * (1-p)/n))
 ```
 
+Variants with the mutation 
 
 ```{r}
 table(dat[which(dat$Collection.week >= 21 & i.E484K), "VariantShort"])
@@ -1095,7 +1377,7 @@ arrows(x0 = dat.France$week, y0 = dat.France$nb_pos/7 * (dat.France$tx_A1/100 + 
 
 ```
 
-```{r}
+```{r, results = "hide"}
 
 for(cw in 22:28){
   tmp <- dat[which(dat$Collection.week == cw & i.E484K), ]
@@ -1113,8 +1395,6 @@ table(dat[which(dat$Collection.week >= 21 & i.E484K), "VariantShort"])
 ```{r}
 datM <- dat[dat$country == "Martinique", ]
 datG <- dat[dat$country == "Guadeloupe", ]
-
-datM
 
 
 for(col in c("Pango.lineage", "VariantShort")){
@@ -1137,7 +1417,7 @@ totdate <- aggregate(dataset[, col], by = list(Collection.date = dataset$Collect
 names(totdate)[2] <- "tot"
 byL <- merge(byLin, totdate, by = "Collection.date")
 byL$p <- byL$x / byL$tot
-byL[order(byL$p), ]
+# byL[order(byL$p), ]
 
 # By full collection date
 par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 

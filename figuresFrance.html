@@ -11,7 +11,6 @@
 
 <meta name="author" content="FD" />
 
-<meta name="date" content="2021-07-21" />
 
 <title>France on GISAID</title>
 
@@ -255,14 +254,14 @@ div.tocify {
 
 <h1 class="title toc-ignore">France on GISAID</h1>
 <h4 class="author">FD</h4>
-<h4 class="date">2021-07-21</h4>
 
 </div>
 
 
+<p>Document compiled on 2021-10-20.</p>
 <div id="initializations" class="section level1">
 <h1>Initializations</h1>
-<pre class="r"><code># Colors 
+<pre class="r"><code># Colors definitions 
 library(RColorBrewer)
 colsV &lt;- rep(c(brewer.pal(12, &quot;Paired&quot;), brewer.pal(12, &quot;Set3&quot;), brewer.pal(9, &quot;Set1&quot;)), 20)
 colsP &lt;- brewer.pal(5, &quot;Set1&quot;)
@@ -286,21 +285,39 @@ is.NAempty &lt;- function(x){
 </div>
 <div id="load-and-clean-data" class="section level1">
 <h1>Load and clean data</h1>
-<p>Data source: <code>metadata.tsv</code>, downloaded from <a href="https://www.gisaid.org">GISAID</a>.</p>
+<p>Data source: <code>metadata.tsv</code> file, downloaded from <a href="https://www.gisaid.org">GISAID</a>.</p>
 <p>Then, in console</p>
 <pre><code>grep &quot;hCoV-19/France&quot; metadata.tsv</code></pre>
 <p>to extract sequences from France (as country) only. The resulting file is stored in the <code>data/</code> folder.</p>
 <p>Note: Oversea territories are referenced as independent on GISAID</p>
+<p>Extracted data for Martinique and Guadeloupe as well (<code>grep Martinique</code> and <code>grep Guadeloupe</code>).</p>
 <div id="load-data" class="section level2">
 <h2>Load data</h2>
-<pre class="r"><code>dat &lt;- read.csv(&quot;data/2021-07-20_France.tsv&quot;, sep = &quot;\t&quot;, stringsAsFactors = FALSE, header = FALSE)
+<pre class="r"><code>thedate &lt;- &quot;2021-10-18&quot;
+# Load France data
+dat &lt;- read.csv(paste0(&quot;data/&quot;, thedate, &quot;_France.tsv&quot;), sep = &quot;\t&quot;, stringsAsFactors = FALSE, header = FALSE)
+
+# Load data DROM
+dat2 &lt;- read.csv(paste0(&quot;data/&quot;, thedate, &quot;_Martinique.tsv&quot;), sep = &quot;\t&quot;, stringsAsFactors = FALSE, header = FALSE)
+dat3 &lt;- read.csv(paste0(&quot;data/&quot;, thedate, &quot;_Guadeloupe.tsv&quot;), sep = &quot;\t&quot;, stringsAsFactors = FALSE, header = FALSE)
+
+# Add column to distinguish metro from DROM
+dat$metropole &lt;- TRUE
+dat2$metropole &lt;- FALSE
+dat3$metropole &lt;- FALSE
+
+# Join the datasets
+dat &lt;- rbind(dat, dat2, dat3)
+
 head(dat)
-names(dat) &lt;- c(&quot;Virus.name&quot;, &quot;Type&quot;, &quot;Accession.ID&quot;, &quot;Collection.date&quot;, &quot;Location&quot;, &quot;Additional.location.information&quot;, &quot;Sequence.length&quot;, &quot;Host&quot;, &quot;Patient.age&quot;, &quot;Gender&quot;, &quot;Clade&quot;, &quot;Pango.lineage&quot;, &quot;Pangolin.version&quot;, &quot;Variant&quot;, &quot;AA.Substitutions&quot;, &quot;Submission.date&quot;, &quot;Is.reference&quot;, &quot;Is.complete&quot;, &quot;Is.high.coverage&quot;, &quot;Is.low.coverage&quot;, &quot;N.Content&quot;, &quot;GC.Content&quot;)</code></pre>
-<p>There are 57438 lines in the dataset.</p>
+# Add names 
+# (names are not in the datafiles because &quot;grep&quot; was used to extract data)
+names(dat) &lt;- c(&quot;Virus.name&quot;, &quot;Type&quot;, &quot;Accession.ID&quot;, &quot;Collection.date&quot;, &quot;Location&quot;, &quot;Additional.location.information&quot;, &quot;Sequence.length&quot;, &quot;Host&quot;, &quot;Patient.age&quot;, &quot;Gender&quot;, &quot;Clade&quot;, &quot;Pango.lineage&quot;, &quot;Pangolin.version&quot;, &quot;Variant&quot;, &quot;AA.Substitutions&quot;, &quot;Submission.date&quot;, &quot;Is.reference&quot;, &quot;Is.complete&quot;, &quot;Is.high.coverage&quot;, &quot;Is.low.coverage&quot;, &quot;N.Content&quot;, &quot;GC.Content&quot;, &quot;Metropole&quot;)</code></pre>
+<p>There are 113573 lines in the dataset; 112465 for mainland France, 527 for Martinique and 581 for Guadeloupe.</p>
 </div>
 <div id="clean-data" class="section level2">
 <h2>Clean data</h2>
-<p>Dates: full date, year-month and year</p>
+<p>Extract dates: full date, year-month and year</p>
 <pre class="r"><code># Reformat dates
 
 # Table of the lengths of the different dates
@@ -341,13 +358,12 @@ dat$Collection.date.Y &lt;- getY(dat$Collection.date)
 dat$Submission.date.Y &lt;- getY(dat$Submission.date)</code></pre>
 <p>Dates: get week numbers<br />
 (currently only done for 2021)</p>
-<pre class="r"><code># NOTE: THIS IS ONLY FOR 2021 -- need to change method for 2020, or do it separately
+<pre class="r"><code># Version 1, only for 2021 (hard-coded)
 
 endDay &lt;- max(dat$Submission.date.YMD)
 beginDay &lt;- seq(base::as.Date(&quot;2021-01-04&quot;), base::as.Date(&quot;2021-12-27&quot;), by = 7)
 endDay &lt;- seq(base::as.Date(&quot;2021-01-10&quot;), base::as.Date(&quot;2022-01-02&quot;), by = 7)
 weeks &lt;- as.data.frame(cbind(weekBegin = beginDay, weekEnd = endDay, week = 1:52))
-
 
 # Assign weeks
   # Initialize week numbers
@@ -360,90 +376,164 @@ for(iw in weeks$week){
   
   # Submission week
   dat[which(base::as.Date(dat$Submission.date.YMD) &gt;= base::as.Date(weeks[iw, &quot;weekBegin&quot;], origin = &quot;1970-01-01&quot;) &amp; base::as.Date(dat$Submission.date.YMD) &lt;= base::as.Date(weeks[iw, &quot;weekEnd&quot;], origin = &quot;1970-01-01&quot;)), &quot;Submission.week&quot;] &lt;- iw
-}</code></pre>
-<p>Difference between submission and collection dates</p>
-<pre class="r"><code>dat$diffSubCol &lt;- as.numeric(dat$Submission.date.YMD - dat$Collection.date.YMD)</code></pre>
-<p>Locations:<br />
-Try to get some uniformity automatically because some spellings differ</p>
-<pre class="r"><code># Extract locations
-# Reformat locations: 
-# 1) Remove spaces
-locs &lt;- gsub(&quot; &quot;, &quot;&quot;, dat$Location)
-# 2) Convert to upper case
-locs &lt;- toupper(locs)
-# 3) Remove dashes
-locs &lt;- gsub(&quot;-&quot;, &quot;&quot;, locs)
-locs &lt;- gsub(&quot;_&quot;, &quot;&quot;, locs)
-# 4) Remove some accents
-#    A 
-for(char in c(&quot;À&quot;, &quot;Â&quot;, &quot;Ä&quot;)){
-  locs &lt;- gsub(char, &quot;A&quot;, locs)
-}
-#    E 
-for(char in c(&quot;È&quot;, &quot;É&quot;, &quot;Ê&quot;)){
-  locs &lt;- gsub(char, &quot;E&quot;, locs)
-}
-#    I 
-for(char in c(&quot;Î&quot;)){
-  locs &lt;- gsub(char, &quot;I&quot;, locs)
-}
-#    O 
-for(char in c(&quot;Ô&quot;)){
-  locs &lt;- gsub(char, &quot;O&quot;, locs)
 }
 
-# Split locations
+#-------------------------------------
+# Version 2, using `format`
+
+dat$Collection.date.wk &lt;- format(as.Date(dat$Collection.date.YMD), &quot;%W&quot;)
+dat$Submission.date.wk &lt;- format(as.Date(dat$Submission.date.YMD), &quot;%W&quot;)
+
+dat$Collection.Ywk &lt;- paste0(dat$Collection.date.Y, &quot;-&quot;, dat$Collection.date.wk)
+dat$Submission.Ywk &lt;- paste0(dat$Submission.date.Y, &quot;-&quot;, dat$Submission.date.wk)
+
+sort(unique(dat$Collection.Ywk))
+
+# A sequence with an odd date
+dat[dat$Collection.Ywk == &quot;2020-00&quot;, ]
+
+# Check weeks in the two versions
+plot(dat$Collection.week, dat$Collection.date.wk, 
+     xlab = &quot;week, version 1&quot;, ylab = &quot;week, version 2&quot;, main = &quot;Consistency check&quot;)
+abline(a = 0, b = 1)</code></pre>
+<p><img src="figuresFrance_files/figure-html/cleanDataWeeks-1.png" width="672" /></p>
+<p>Difference between submission and collection dates</p>
+<pre class="r"><code>dat$diffSubCol &lt;- as.numeric(dat$Submission.date.YMD - dat$Collection.date.YMD)</code></pre>
+<p>Locations:</p>
+<p>Try to get some uniformity automatically because some spellings differ</p>
+<pre class="r"><code># Split locations
+
 # Locations are presented as a single string, which we split
-locs &lt;- strsplit(locs, &quot;/&quot;)
+locs &lt;- strsplit(dat$Location, &quot; / &quot;)
 # The strings are of different lengths / precision; get length (number of geographic divisions)
 lenlocs &lt;- sapply(locs, length)
 table(lenlocs)
+
 # Turn into matrix, filling with NAs
 # Source: https://stackoverflow.com/a/15201690
 mat &lt;- as.data.frame(t(sapply(locs, &quot;[&quot;, i = 1:max(lenlocs))))
 names(mat) &lt;- c(&quot;continent&quot;, &quot;country&quot;, &quot;region&quot;, &quot;div4&quot;, &quot;div5&quot;)
+# Add the dataset
 dat &lt;- cbind(dat, mat)
 # Also add information about location precision
 dat &lt;- cbind(dat, locationLength = lenlocs)
-names(dat)</code></pre>
+
+# Load dictionary to convert region names
+infoRegion &lt;- read.csv(&quot;data_public/correspondance_regions.csv&quot;)
+
+# Check that we have all names -- focusing on Metropole
+rr &lt;- unique(dat[dat$metropole, &quot;region&quot;])
+rr &lt;- rr[!is.na(rr)]
+all(is.element(rr, infoRegion$Region_on_GISAID))
+
+# If FALSE, which ones are we missing?
+if(!all(is.element(rr, infoRegion$Region_on_GISAID))){
+  rr[which(!is.element(rr, infoRegion$Region_on_GISAID))]
+}
+
+# Stop if we are missing names
+stopifnot(is.element(rr, infoRegion$Region_on_GISAID))
+
+# Convert into dictionary
+dic.regnames &lt;- c(infoRegion$region)
+names(dic.regnames) &lt;- infoRegion$Region_on_GISAID
+
+# Save old region names
+dat$oldRegion &lt;- dat$region
+
+# Convert names into the proper region names
+dat$region &lt;- dic.regnames[dat$oldRegion]
+
+regions &lt;- sort(unique(dat$region))
+
+# Note: For DROM, information is in Country instead</code></pre>
 <p>Hosts</p>
 <pre class="r"><code># Uniformize notation
 dat[dat$Host == &quot;human&quot;, &quot;Host&quot;] &lt;- &quot;Human&quot;</code></pre>
+<div id="variants" class="section level3">
+<h3>Variants</h3>
+<p>Use short names<br />
+<strong>Needs to be manually checked from time to time</strong></p>
+<pre class="r"><code># Initialize new column
+dat$VariantShort &lt;- dat$Variant
+
+# Current variants in GISAID
+variants &lt;- sort(unique(dat$Variant))
+
+# Short versions of the names
+variantsShort &lt;- c(&quot;&quot;, &quot;Alpha&quot;, &quot;Beta&quot;, &quot;Delta&quot;, &quot;Gamma&quot;, &quot;Lambda&quot;, &quot;Mu&quot;)
+
+# Check consistency
+cbind(variants, variantsShort)</code></pre>
+<pre><code>##      variants                                                                          
+## [1,] &quot;&quot;                                                                                
+## [2,] &quot;VOC Alpha 202012/01 GRY (B.1.1.7+Q.x) first detected in the UK&quot;                  
+## [3,] &quot;VOC Beta GH/501Y.V2 (B.1.351+B.1.351.2+B.1.351.3) first detected in South Africa&quot;
+## [4,] &quot;VOC Delta GK/478K.V1 (B.1.617.2+AY.x) first detected in India&quot;                   
+## [5,] &quot;VOC Gamma GR/501Y.V3 (P.1+P.1.x) first detected in Brazil/Japan&quot;                 
+## [6,] &quot;VOI Lambda GR/452Q.V1 (C.37+C.37.1) first detected in Peru&quot;                      
+## [7,] &quot;VOI Mu GH (B.1.621+B.1.621.1) first detected in Colombia&quot;                        
+##      variantsShort
+## [1,] &quot;&quot;           
+## [2,] &quot;Alpha&quot;      
+## [3,] &quot;Beta&quot;       
+## [4,] &quot;Delta&quot;      
+## [5,] &quot;Gamma&quot;      
+## [6,] &quot;Lambda&quot;     
+## [7,] &quot;Mu&quot;</code></pre>
+<pre class="r"><code># Assign shorter name
+for(i in seq_along(variants)){
+  dat[which(dat$Variant == variants[i]), &quot;VariantShort&quot;] &lt;- variantsShort[i]
+}</code></pre>
 </div>
-<div id="flash" class="section level2">
-<h2>Flash</h2>
-<p>Load Flash dates</p>
-<pre class="r"><code>datesFlash &lt;- read.csv(&quot;../gisaid_covid/data/datesFlash.csv&quot;, stringsAsFactors = FALSE, header = FALSE)
-names(datesFlash) &lt;- c(&quot;FlashNb&quot;, &quot;date&quot;, &quot;date2&quot;, &quot;week&quot;)
+<div id="submitters" class="section level3">
+<h3>Submitters</h3>
+<p>Get submitter information from Virus name</p>
+<pre class="r"><code># Find lines with the 3-letter code of each platform
+ipp &lt;- grep(dat$Virus.name, pattern = &quot;IPP&quot;)
+hcl &lt;- grep(dat$Virus.name, pattern = &quot;HCL&quot;)
+ihu &lt;- grep(dat$Virus.name, pattern = &quot;IHU&quot;)
+hmn &lt;- grep(dat$Virus.name, pattern = &quot;HMN&quot;)
+
+# Assign submitter names
+dat$submitter &lt;- rep(&quot;autre&quot;, nrow(dat))
+dat[ipp, &quot;submitter&quot;] &lt;- &quot;IPP&quot;
+dat[hcl, &quot;submitter&quot;] &lt;- &quot;HCL&quot;
+dat[ihu, &quot;submitter&quot;] &lt;- &quot;IHU&quot;
+dat[hmn, &quot;submitter&quot;] &lt;- &quot;HMN&quot;
+
+# Show total number of sequences per submitter
+table(dat$submitter, useNA = &quot;ifany&quot;)</code></pre>
+<pre><code>## 
+## autre   HCL   HMN   IHU   IPP 
+## 24628 32304 14238 24274 18129</code></pre>
+<pre class="r"><code># Just the list of submitter names
+submitters &lt;- sort(unique(dat$submitter))</code></pre>
+</div>
+<div id="countries" class="section level3">
+<h3>Countries</h3>
+<pre class="r"><code># Check countries
+table(country = dat$country)</code></pre>
+<pre class="r"><code>dat[dat$country == &quot;Switzerland&quot;, ]
+# Seems to have been sequenced in France but to come from Switzerland
+# -&gt; Remove it
+dat &lt;- dat[which(dat$country != &quot;Switzerland&quot;), ]</code></pre>
+</div>
+</div>
+<div id="enquêtes-flash" class="section level2">
+<h2>Enquêtes Flash</h2>
+<p>Load Flash dates Available on <a href="https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france" class="uri">https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france</a></p>
+<pre class="r"><code>datesFlash &lt;- read.csv(&quot;data_public/datesFlash.csv&quot;, stringsAsFactors = FALSE)
 datesFlash.all &lt;- datesFlash
 # Remove Flash 1 and 2, which were not on a random sample
 datesFlash &lt;- datesFlash[datesFlash$FlashNb &gt;=3 , ]</code></pre>
-<p>Flash data Typed from <a href="https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france#block-337272" class="uri">https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france#block-337272</a>, accessed 2021-07-21</p>
+<p>Flash data Typed from pdfs available on <a href="https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france#block-337272" class="uri">https://www.santepubliquefrance.fr/etudes-et-enquetes/enquetes-flash-evaluation-de-la-circulation-des-variants-du-sars-cov-2-en-france#block-337272</a>, accessed 2021-07-21</p>
 <pre class="r"><code>dat.Flash &lt;- read.csv(&quot;data_public/2021-07-21_Flash.csv&quot;)
-head(dat.Flash)</code></pre>
-<pre><code>##   FlashNumber       Date week
-## 1     Flash11 2021-06-08   23
-## 2     Flash11 2021-06-08   23
-## 3     Flash11 2021-06-08   23
-## 4     Flash11 2021-06-08   23
-## 5     Flash11 2021-06-08   23
-## 6     Flash11 2021-06-08   23
-##                                                       Variants Variant_short
-## 1                                     20I (V1, B.1.1.7, Alpha)  Alpha_noEmut
-## 2        20H (V2, B.1.351/B.1.351.1/B.1.351.2/B.1.351.3, Beta)          Beta
-## 3                                        20J (V3, P.1, Gamma)          Gamma
-## 4                                  20I/484K (B.1.1.7 + E484K)    Alpha_E484K
-## 5                                   20I/484Q (B.1.1.7 + E484Q)   Alpha_E484Q
-## 6 (B.1.617.2/AY.1/AY.2, Delta)21A (B.1.617.2/AY.1/AY.2, Delta)         Delta
-##   Proportion NbPrelevSeq
-## 1      0.770         808
-## 2      0.094         808
-## 3      0.004         808
-## 4      0.023         808
-## 5      0.001         808
-## 6      0.085         808</code></pre>
-<pre class="r"><code>dat.Flash$deltaCI &lt;- 1.96 * sqrt(dat.Flash$Proportion * (1 - dat.Flash$Proportion) / dat.Flash$NbPrelevSeq)</code></pre>
-<p>Specific Flash data</p>
+head(dat.Flash)
+
+# Add confidence interval for Delta
+dat.Flash$deltaCI &lt;- 1.96 * sqrt(dat.Flash$Proportion * (1 - dat.Flash$Proportion) / dat.Flash$NbPrelevSeq)</code></pre>
+<p>Specific Flash data (for Beta) – extracted by hand from the pdfs</p>
 <pre class="r"><code># Load Flash 11 data
 flash11 &lt;- read.csv(&quot;data_public/Flash11_Beta.csv&quot;)
 flash11 &lt;- flash11[flash11$Region != &quot;Total&quot;, ]
@@ -460,10 +550,8 @@ flash09 &lt;- flash09[flash09$Region != &quot;Total&quot;, ]
 flash09$nBeta &lt;- round(flash09$pBeta * flash09$Prelevements)
 
 # Get codes of Outre-Mer regions
-unique(c(flash09$Region, flash10$Region, flash11$Region))</code></pre>
-<pre><code>##  [1] &quot;ARA&quot;  &quot;BFC&quot;  &quot;BRE&quot;  &quot;CVL&quot;  &quot;COR&quot;  &quot;GE&quot;   &quot;GUA&quot;  &quot;HDF&quot;  &quot;IDF&quot;  &quot;REU&quot; 
-## [11] &quot;MAR&quot;  &quot;NOR&quot;  &quot;NAQ&quot;  &quot;OCC&quot;  &quot;PDL&quot;  &quot;PACA&quot; &quot;NR&quot;   &quot;MAY&quot;</code></pre>
-<pre class="r"><code>reg_OM &lt;- c(&quot;GUA&quot;, &quot;REU&quot;, &quot;MAR&quot;, &quot;MAY&quot;)
+unique(c(flash09$Region, flash10$Region, flash11$Region))
+reg_OM &lt;- c(&quot;GUA&quot;, &quot;REU&quot;, &quot;MAR&quot;, &quot;MAY&quot;)
 
 # Remove Outre-Mer
 flash11.noOM &lt;- flash11[which(!is.element(flash11$Region, reg_OM)), ]
@@ -481,116 +569,129 @@ totFlash.noOM$nTot &lt;- c(tot09[1], tot10[1], tot11[1])
 totFlash.noOM$pBeta &lt;- c(tot09[2]/tot09[1], tot10[2]/tot10[1], tot11[2]/tot11[1])
 totFlash.noOM$deltaCI &lt;- 1.96 * sqrt(totFlash.noOM$pBeta * (1-totFlash.noOM$pBeta) / totFlash.noOM$nTot)
 totFlash.noOM</code></pre>
-<pre><code>##   week nTot      pBeta    deltaCI
-## 1   19 1659 0.06088005 0.01150617
-## 2   21 1706 0.04220399 0.00954069
-## 3   23  740 0.03513514 0.01326613</code></pre>
 </div>
 </div>
-<div id="france" class="section level1">
-<h1>France</h1>
-<pre class="r"><code>table(country = dat$country)</code></pre>
-<pre><code>## country
-##     FRANCE GUADELOUPE 
-##      57419         19</code></pre>
-<pre class="r"><code># Keep only mainland France
-dat &lt;- dat[dat$country == &quot;FRANCE&quot;, ]</code></pre>
-<p>There are 57419 samples with location in France.</p>
-<p>Get submitter information from Virus name</p>
-<pre class="r"><code>ipp &lt;- grep(dat$Virus.name, pattern = &quot;IPP&quot;)
-hcl &lt;- grep(dat$Virus.name, pattern = &quot;HCL&quot;)
-ihu &lt;- grep(dat$Virus.name, pattern = &quot;IHU&quot;)
-hmn &lt;- grep(dat$Virus.name, pattern = &quot;HMN&quot;)
-
-
-dat$submitter &lt;- rep(&quot;autre&quot;, nrow(dat))
-dat[ipp, &quot;submitter&quot;] &lt;- &quot;IPP&quot;
-dat[hcl, &quot;submitter&quot;] &lt;- &quot;HCL&quot;
-dat[ihu, &quot;submitter&quot;] &lt;- &quot;IHU&quot;
-dat[hmn, &quot;submitter&quot;] &lt;- &quot;HMN&quot;
-
-table(dat$submitter, useNA = &quot;ifany&quot;)</code></pre>
-<pre><code>## 
-## autre   HCL   HMN   IHU   IPP 
-## 17666 10795  9255 10467  9236</code></pre>
-<pre class="r"><code>submitters &lt;- sort(unique(dat$submitter))</code></pre>
-<div id="sequence-metadata" class="section level2">
-<h2>Sequence metadata</h2>
-<p>Dates</p>
+<div id="sequence-metadata" class="section level1">
+<h1>Sequence metadata</h1>
+<p>Check completeness of the different fields</p>
+<div id="dates-and-locations" class="section level2">
+<h2>Dates and locations</h2>
+<div id="dates" class="section level3">
+<h3>Dates</h3>
 <ul>
-<li>The fraction of samples with missing full day of collection is 0.19</li>
+<li>The fraction of samples with missing full day of collection is 0.13</li>
 </ul>
 <p>Distribution of samples with incomplete collection date information, by submitter</p>
 <pre class="r"><code>totSeq &lt;- table(dat$submitter)
 tt &lt;- table(dat[which(is.na(dat$Collection.date.YMD)), &quot;submitter&quot;])
 
-rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])</code></pre>
-<pre><code>##                           autre   IHU  IPP
-## incomplete_collectionDate  3908  6672  292
-## tot_seq                   17666 10467 9236</code></pre>
-<p>Location</p>
+tmp &lt;- rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_incomplete_collectionDate = round(tmp[1, ]/tmp[2, ], 4))</code></pre>
+<pre><code>##                                     autre        IHU        IPP
+## incomplete_collectionDate       5283.0000  9373.0000   630.0000
+## tot_seq                        24627.0000 24274.0000 18129.0000
+## prop_incomplete_collectionDate     0.2145     0.3861     0.0348</code></pre>
+</div>
+<div id="location" class="section level3">
+<h3>Location</h3>
 <ul>
-<li>The fraction of samples with missing regional information is 0.03</li>
+<li>The fraction of samples with missing regional information is 0.06</li>
 </ul>
 <p>Distribution of entries with incomplete location, by submitter</p>
 <pre class="r"><code>tt &lt;- table(dat[which(is.na(dat$region)), &quot;submitter&quot;])
 
-rbind(missing_region = tt, tot_seq = totSeq[names(tt)])</code></pre>
-<pre><code>##                autre  HMN
-## missing_region   821  749
-## tot_seq        17666 9255</code></pre>
-<p>Regions need to be standardized…</p>
-<pre class="r"><code>sort(unique(dat$region))</code></pre>
-<pre><code>##  [1] &quot;ALPESMARITIMES&quot;          &quot;ALSACE&quot;                 
-##  [3] &quot;AQUITAINE&quot;               &quot;ARIEGE&quot;                 
-##  [5] &quot;AUDE&quot;                    &quot;AUVERGNE&quot;               
-##  [7] &quot;AUVERGNERHONEALPES&quot;      &quot;AVEYRON&quot;                
-##  [9] &quot;BASSENORMANDIE&quot;          &quot;BOURGOGNE&quot;              
-## [11] &quot;BOURGOGNEFRANCHECOMTE&quot;   &quot;BRETAGNE&quot;               
-## [13] &quot;CENTRE&quot;                  &quot;CENTREVALDELOIRE&quot;       
-## [15] &quot;CHAMPAGNEARDENNE&quot;        &quot;CORSE&quot;                  
-## [17] &quot;COTED&#39;AZUR&quot;              &quot;GERS&quot;                   
-## [19] &quot;GRANDEST&quot;                &quot;GRENOBLE&quot;               
-## [21] &quot;GUYANE&quot;                  &quot;HAUTEGARONNE&quot;           
-## [23] &quot;HAUTENORMANDIE&quot;          &quot;HAUTESPYRENEES&quot;         
-## [25] &quot;HAUTRHIN&quot;                &quot;HAUTSDEFRANCE&quot;          
-## [27] &quot;ILEDEFRANCE&quot;             &quot;LORRAINE&quot;               
-## [29] &quot;LOT&quot;                     &quot;LOTETGARONNE&quot;           
-## [31] &quot;MARSEILLE&quot;               &quot;MEUSE&quot;                  
-## [33] &quot;NICE&quot;                    &quot;NORDPASDECALAIS&quot;        
-## [35] &quot;NORMANDIE&quot;               &quot;NORMANDY&quot;               
-## [37] &quot;NOUVELLEAQUITAINE&quot;       &quot;OCCITANIE&quot;              
-## [39] &quot;PAC&quot;                     &quot;PAYSDELALOIRE&quot;          
-## [41] &quot;PAYSDELOIRE&quot;             &quot;PICARDIE&quot;               
-## [43] &quot;POITOUCHARENTES&quot;         &quot;PROVENCEALPESCOTEAZUR&quot;  
-## [45] &quot;PROVENCEALPESCOTED&#39;AZUR&quot; &quot;PYRENEESORIENTALES&quot;     
-## [47] &quot;RHONEALPES&quot;              &quot;TARN&quot;                   
-## [49] &quot;TARNETGARONNE&quot;           &quot;VALD&#39;OISE&quot;</code></pre>
-<div id="metadata-on-hosts" class="section level3">
-<h3>Metadata on hosts</h3>
+tmp &lt;- rbind(missing_region = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_missing_region = round(tmp[1, ]/tmp[2, ], 4))</code></pre>
+<pre><code>##                         autre       HCL        HMN        IHU        IPP
+## missing_region       1257.000   679.000   773.0000  2654.0000  1038.0000
+## tot_seq             24627.000 32304.000 14238.0000 24274.0000 18129.0000
+## prop_missing_region     0.051     0.021     0.0543     0.1093     0.0573</code></pre>
+</div>
+</div>
+<div id="metadata-on-hosts" class="section level2">
+<h2>Metadata on hosts</h2>
+<div id="type-of-host" class="section level3">
+<h3>Type of host</h3>
 <pre class="r"><code># Hosts
 table(dat$Host)</code></pre>
 <pre><code>## 
-## Human 
-## 57419</code></pre>
-<p>Age</p>
+##  Human 
+## 113572</code></pre>
+</div>
+<div id="age" class="section level3">
+<h3>Age</h3>
 <pre class="r"><code># Age
 dat[which(is.element(dat$Patient.age, c(&quot;unknown&quot;, &quot;Unknown&quot;))), &quot;Patient.age&quot;] &lt;- NA
 
 # Convert to numeric values 
 # if contains characters -&gt; NA
 dat$Patient.age &lt;- suppressWarnings(as.numeric(dat$Patient.age))</code></pre>
-<p>The fraction of samples with missing or incorrect age information is 0.3.</p>
+<p>The fraction of samples with missing or incorrect age information is 0.29.</p>
 <p>Missing age by submitter</p>
 <pre class="r"><code>tt &lt;- table(dat[which(is.na(dat$Patient.age)), &quot;submitter&quot;])
-rbind(missing_age = tt, tot_seq = totSeq[names(tt)])</code></pre>
-<pre><code>##             autre   HCL  HMN   IHU  IPP
-## missing_age  5524   842  125 10467  554
-## tot_seq     17666 10795 9255 10467 9236</code></pre>
+tmp &lt;- rbind(missing_age = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_missing_age = round(tmp[1, ]/tmp[2, ], 4))</code></pre>
+<pre><code>##                       autre        HCL        HMN   IHU        IPP
+## missing_age       6237.0000   982.0000   147.0000 24273  1116.0000
+## tot_seq          24627.0000 32304.0000 14238.0000 24274 18129.0000
+## prop_missing_age     0.2533     0.0304     0.0103     1     0.0616</code></pre>
 <p>Distribution of ages</p>
 <pre class="r"><code>par(las = 1)
+range(dat$Patient.age, na.rm = TRUE)</code></pre>
+<pre><code>## [1]    0 2021</code></pre>
+<pre class="r"><code>dat[which(dat$Patient.age &gt;120), &quot;Patient.age&quot;] &lt;- NA
 hist(dat$Patient.age, xlab = &quot;Patient age&quot;, main = &quot;Distribution of patient ages&quot;, breaks = seq(0, max(dat$Patient.age, na.rm = TRUE), by = 1), border = gray(1, 1), col = cols[1])</code></pre>
-<p><img src="figuresFrance_files/figure-html/unnamed-chunk-16-1.png" width="672" /></p>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-18-1.png" width="672" /></p>
+<p>Odd ages</p>
+<ul>
+<li>119 yo</li>
+</ul>
+<p>Who submitted data with this age?</p>
+<pre class="r"><code>table(dat[which(dat$Patient.age == 119), &quot;submitter&quot;])</code></pre>
+<pre><code>## 
+## autre   HCL   HMN 
+##     3   389     1</code></pre>
+<p>When were they submitted?</p>
+<pre class="r"><code>table(dat[which(dat$Patient.age == 119), &quot;Submission.date&quot;])</code></pre>
+<pre><code>## 
+## 2021-01-29 2021-03-26 2021-04-02 2021-05-04 2021-06-25 2021-07-09 2021-07-11 
+##          3          1         25          7          3          1          4 
+## 2021-07-14 2021-07-29 2021-08-03 2021-08-13 2021-08-18 2021-08-24 2021-09-18 
+##          2         17         18          1          3          2         99 
+## 2021-09-20 2021-09-30 2021-10-04 
+##        111         93          3</code></pre>
+<ul>
+<li>0 yo</li>
+</ul>
+<p>Who submitted data with this age?</p>
+<pre class="r"><code>table(dat[which(dat$Patient.age == 0), &quot;submitter&quot;])</code></pre>
+<pre><code>## 
+## autre   HCL   HMN   IPP 
+##   136     6    57    13</code></pre>
+<p>When were they submitted?</p>
+<pre class="r"><code>table(dat[which(dat$Patient.age == 0), &quot;Submission.date&quot;])</code></pre>
+<pre><code>## 
+## 2020-04-01 2020-05-12 2020-08-04 2020-11-04 2020-12-10 2020-12-29 2021-02-02 
+##          1          2          1          1          1          1          1 
+## 2021-02-26 2021-03-01 2021-03-09 2021-03-20 2021-03-23 2021-03-26 2021-03-30 
+##          4          2          1          2          1          4          2 
+## 2021-03-31 2021-04-13 2021-04-14 2021-04-21 2021-04-22 2021-04-23 2021-04-27 
+##          1          1          1          2          1          9          5 
+## 2021-04-28 2021-04-30 2021-05-05 2021-05-06 2021-05-10 2021-05-12 2021-05-18 
+##         15          1          2          2          1          1          2 
+## 2021-05-19 2021-05-20 2021-05-22 2021-05-26 2021-05-27 2021-05-29 2021-05-31 
+##          5          2          3          2         17          1          8 
+## 2021-06-08 2021-06-09 2021-06-12 2021-06-14 2021-06-18 2021-06-22 2021-07-01 
+##          2          1          4          4          2          2          1 
+## 2021-07-13 2021-07-16 2021-07-28 2021-08-06 2021-08-09 2021-08-13 2021-08-15 
+##          2          2          1          2          1          6          6 
+## 2021-08-17 2021-08-18 2021-08-19 2021-08-20 2021-08-23 2021-08-27 2021-09-01 
+##          3          5          1          5          1         12          2 
+## 2021-09-02 2021-09-14 2021-09-16 2021-09-27 2021-09-30 2021-10-12 2021-10-14 
+##          1          5          1          8          2         19          5</code></pre>
+</div>
+<div id="sex" class="section level3">
+<h3>Sex</h3>
 <p>“Gender” information</p>
 <pre class="r"><code>unique(dat$Gender)
 # Clean
@@ -598,33 +699,34 @@ dat[which(is.element(dat$Gender, c(&quot;unknown&quot;, &quot;Unknown&quot;, &qu
 
 table(dat$Gender, useNA = &quot;ifany&quot;)</code></pre>
 <pre class="r"><code># Distribution by submitter
-rbind(missing_age = table(dat[which(is.na(dat$Gender)), &quot;submitter&quot;]), tot_seq = table(dat$submitter))</code></pre>
-<pre><code>##             autre   HCL  HMN   IHU  IPP
-## missing_age  4445   284  346 10465 2156
-## tot_seq     17666 10795 9255 10467 9236</code></pre>
+tt &lt;- table(dat[which(is.na(dat$Gender)), &quot;submitter&quot;])
+tmp &lt;- rbind(missing_sex = tt, tot_seq = totSeq[names(tt)])
+rbind(tmp, prop_missing_sex = round(tmp[1, ]/tmp[2, ], 4))</code></pre>
+<pre><code>##                       autre       HCL        HMN        IHU        IPP
+## missing_sex       4657.0000   389.000   478.0000 24271.0000  2369.0000
+## tot_seq          24627.0000 32304.000 14238.0000 24274.0000 18129.0000
+## prop_missing_sex     0.1891     0.012     0.0336     0.9999     0.1307</code></pre>
 </div>
-<div id="virus" class="section level3">
-<h3>Virus</h3>
-<pre class="r"><code># &quot;Clade&quot;                           &quot;Pango.lineage&quot;         
-# &quot;Pangolin.version&quot;                &quot;Variant&quot;                 
-# &quot;AA.Substitutions&quot;</code></pre>
-<p>Clades</p>
+</div>
+<div id="virus" class="section level2">
+<h2>Virus</h2>
+<p>GISAID Clades</p>
 <pre class="r"><code>table(dat$Clade, useNA = &quot;ifany&quot;)</code></pre>
 <pre><code>## 
-##     G    GH    GR   GRY    GV     L     O     S     V 
-##  9951 11346  4085 28694  1802    34   889   573    45</code></pre>
+##           G    GH    GK    GR   GRY    GV     L     O     S     V 
+##     3 11453 14190 47028  7211 29066  2483    40  1419   634    45</code></pre>
 <p>Pango lineage info is missing in a fraction 0 of items.</p>
 <p>Pangolin version</p>
 <pre class="r"><code>table(dat$Pangolin.version)</code></pre>
 <pre><code>## 
-## 2021-07-09 
-##      57419</code></pre>
+## 2021-06-15 2021-09-16 2021-09-28 
+##          1       1958     111613</code></pre>
 </div>
 </div>
-<div id="submissions" class="section level2">
-<h2>Submissions</h2>
-<div id="by-platform" class="section level3">
-<h3>By Platform</h3>
+<div id="submissions" class="section level1">
+<h1>Submissions</h1>
+<div id="by-platform" class="section level2">
+<h2>By Platform</h2>
 <pre class="r"><code>tabFRsub &lt;- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subM = dat$Collection.date.YM), FUN = length)
 
 tabFRsub.month &lt;- aggregate(dat$Virus.name, by = list(subM = dat$Collection.date.YM), FUN = length)
@@ -641,7 +743,7 @@ text(x = rep(x[length(x)-1], 5), y = cumsum(z$x) - z$x/2, labels = z$subID, adj 
 par(xpd = TRUE)
 text(x = x, y = tabFRsub.month$x, labels = tabFRsub.month$x, cex = 0.8, adj = c(0.5, -0.5))
 legend(&quot;topleft&quot;, col = rev(colsP), legend = rev(names(colsP)), pch = 15, bty = &quot;n&quot;)</code></pre>
-<p><img src="figuresFrance_files/figure-html/unnamed-chunk-22-1.png" width="672" /></p>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-27-1.png" width="672" /></p>
 <pre class="r"><code>par(xpd = FALSE)</code></pre>
 <p>By platform, by week</p>
 <pre class="r"><code># By collection week
@@ -652,7 +754,7 @@ tabFRsubS.byweek &lt;- aggregate(dat$Virus.name, by = list(subID = dat$submitter
 names(tabFRsubS.byweek)[3] &lt;- &quot;bySubmissionDate&quot;
 
 seq.byWeek &lt;- merge(tabFRsub.byweek, tabFRsubS.byweek, all = TRUE)
-ymax &lt;- 6000
+ymax &lt;- 10000
 
 seq.byWeek[is.na(seq.byWeek$byCollectionDate), &quot;byCollectionDate&quot;] &lt;- 0
 seq.byWeek[is.na(seq.byWeek$bySubmissionDate), &quot;bySubmissionDate&quot;] &lt;- 0
@@ -684,61 +786,320 @@ x2 &lt;- barplot(seq.byWeek$bySubmissionDate ~ seq.byWeek$subID + seq.byWeek$sub
              main = &quot;Par semaine de soumission&quot;, xaxs = &quot;i&quot;, yaxs = &quot;i&quot;, ylim = c(0, ymax))
 legend(&quot;topleft&quot;, col = rev(colsP), legend = rev(names(colsP)), pch = 15, bty = &quot;n&quot;)
 mtext(&quot;Semaine de soumission&quot;, side = 1, line = 1.25)</code></pre>
-<p><img src="figuresFrance_files/figure-html/unnamed-chunk-23-1.png" width="672" /></p>
-</div>
-</div>
-<div id="lineages-over-time" class="section level2">
-<h2>Lineages over time</h2>
-<div id="variants" class="section level3">
-<h3>Variants</h3>
-<p>Use short names</p>
-<pre class="r"><code>dat$VariantShort &lt;- dat$Variant
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-28-1.png" width="672" /></p>
+<div id="submitters-x-collection-dates" class="section level3">
+<h3>Submitters x Collection dates</h3>
+<pre class="r"><code>dat2 &lt;- dat[order(dat$Collection.date.YMD), ]
+dat2 &lt;- dat2[dat2$Collection.date.Y == 2021,]
 
-variants &lt;- sort(unique(dat$Variant))
-# variants
-variantsShort &lt;- c(&quot;&quot;, &quot;Alpha&quot;, &quot;Beta&quot;, &quot;Delta&quot;, &quot;Gamma&quot;, &quot;Epsilon&quot;, &quot;Eta&quot;, &quot;Iota&quot;, &quot;Kappa&quot;, &quot;Lambda&quot;, &quot;Zeta&quot;)
-# Check
-rbind(variants, variantsShort)</code></pre>
-<pre><code>##               [,1] [,2]                                                        
-## variants      &quot;&quot;   &quot;VOC Alpha 202012/01 GRY (B.1.1.7) first detected in the UK&quot;
-## variantsShort &quot;&quot;   &quot;Alpha&quot;                                                     
-##               [,3]                                                          
-## variants      &quot;VOC Beta GH/501Y.V2 (B.1.351) first detected in South Africa&quot;
-## variantsShort &quot;Beta&quot;                                                        
-##               [,4]                                                               
-## variants      &quot;VOC Delta G/478K.V1 (B.1.617.2+AY.1+AY.2) first detected in India&quot;
-## variantsShort &quot;Delta&quot;                                                            
-##               [,5]                                                       
-## variants      &quot;VOC Gamma GR/501Y.V3 (P.1) first detected in Brazil/Japan&quot;
-## variantsShort &quot;Gamma&quot;                                                    
-##               [,6]                                                                       
-## variants      &quot;VOI Epsilon GH/452R.V1 (B.1.429+B.1.427) first detected in USA/California&quot;
-## variantsShort &quot;Epsilon&quot;                                                                  
-##               [,7]                                                      
-## variants      &quot;VOI Eta G/484K.V3 (B.1.525) first detected in UK/Nigeria&quot;
-## variantsShort &quot;Eta&quot;                                                     
-##               [,8]                                                          
-## variants      &quot;VOI Iota GH/253G.V1 (B.1.526) first detected in USA/New York&quot;
-## variantsShort &quot;Iota&quot;                                                        
-##               [,9]                                                     
-## variants      &quot;VOI Kappa G/452R.V3 (B.1.617.1) first detected in India&quot;
-## variantsShort &quot;Kappa&quot;                                                  
-##               [,10]                                                
-## variants      &quot;VOI Lambda GR/452Q.V1 (C.37) first detected in Peru&quot;
-## variantsShort &quot;Lambda&quot;                                             
-##               [,11]                                               
-## variants      &quot;VOI Zeta GR/484K.V2 (P.2) first detected in Brazil&quot;
-## variantsShort &quot;Zeta&quot;</code></pre>
-<pre class="r"><code># Assign shorter name
-for(i in seq_along(variants)){
-  dat[which(dat$Variant == variants[i]), &quot;VariantShort&quot;] &lt;- variantsShort[i]
-}</code></pre>
-<p>Load TESSy</p>
+# Add phantom lab with all days
+alldates &lt;- seq(as.Date(&quot;2021-01-01&quot;), as.Date(max(dat2$Collection.date.YMD, na.rm = TRUE)), by = &quot;day&quot;)
+
+phantom &lt;- data.frame(matrix(rep(NA, length(alldates)*ncol(dat)), byrow = TRUE, nrow = length(alldates)))
+names(phantom) &lt;- names(dat)
+phantom$Collection.date.YMD &lt;- alldates
+phantom$submitter &lt;- &quot;Submitter&quot;
+dat3 &lt;- rbind(dat2, phantom)
+xx &lt;- table(dat3$submitter, as.Date(dat3$Collection.date.YMD))
+
+# diff(as.Date(unique(as.data.frame(xx)$Var2)))
+heatmap(table(dat3$submitter, as.Date(dat3$Collection.date.YMD)), Rowv = NA, Colv = NA, scale = &quot;none&quot;, col = gray(seq(1, 0, by = -0.01)))</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-29-1.png" width="672" /></p>
+</div>
+<div id="focus-ihu" class="section level3">
+<h3>Focus IHU</h3>
+<pre class="r"><code># All sequences
+subIHU &lt;- dat[dat$submitter == &quot;IHU&quot;, ]</code></pre>
+<pre class="r"><code>is.short &lt;- (subIHU$Sequence.length &lt; 5000)
+missing.day &lt;- (is.na(subIHU$Collection.date.YMD))
+missing.month &lt;- (is.na(subIHU$Collection.date.YM))
+
+aggregate(subIHU$Virus.name, by = list(Sanger = is.short, missingDay = missing.day, missingMonth = missing.month), FUN = length)</code></pre>
+<pre><code>##   Sanger missingDay missingMonth     x
+## 1  FALSE      FALSE        FALSE 13325
+## 2   TRUE      FALSE        FALSE  1576
+## 3  FALSE       TRUE        FALSE  9088
+## 4   TRUE       TRUE        FALSE   285</code></pre>
+<pre class="r"><code># Subset of data with full seqs and missing days
+subIHU.NGS.missingday &lt;- subIHU[!is.short &amp; missing.day, ]
+
+# Export data with missing day
+write.csv(subIHU.NGS.missingday[, c(&quot;Virus.name&quot;, &quot;Accession.ID&quot;, &quot;Collection.date&quot;, &quot;Submission.date&quot;)], file = &quot;data/Export_IHU_NGS-missingCollectionDate.csv&quot;)</code></pre>
+<p>Submission dates of the data with missing full dates</p>
+<pre class="r"><code>table(subIHU.NGS.missingday$Submission.date.YMD)</code></pre>
+<pre><code>## 
+## 2021-04-20 2021-05-26 2021-06-08 2021-06-17 2021-06-23 2021-06-24 2021-06-30 
+##          1         25          3          4          1          2          4 
+## 2021-07-08 2021-07-23 2021-08-16 2021-08-31 2021-09-03 2021-09-22 2021-10-01 
+##         60         92         64       2014       1371       1949        950 
+## 2021-10-07 
+##       2548</code></pre>
+<pre class="r"><code># IHU submission dates
+table(subIHU$Submission.date.YMD)
+
+subIHU.mostrecent &lt;- subIHU[which(subIHU$Submission.date.YMD == max(subIHU$Submission.date.YMD)),]</code></pre>
+<p>Locations in the IHU dataset</p>
+<pre class="r"><code>table(subIHU$Location)</code></pre>
+<pre><code>## 
+##                              Europe / France / Marseille 
+##                                                     4427 
+##                  Europe / France / Occitanie / Marseille 
+##                                                        2 
+## Europe / France / Provence Alpes Cote d’Azur / Marseille 
+##                                                     1371 
+##             Europe / France / Provence-Alpes-Cote d&#39;Azur 
+##                                                       40 
+## Europe / France / Provence-Alpes-Cote d&#39;Azur / Marseille 
+##                                                    13555 
+## Europe / France / Provence-Alpes-Cote-d&#39;Azur / Marseille 
+##                                                     3596 
+## Europe / France / Provence-Alpes-Cote-d’Azur / Marseille 
+##                                                     1281 
+##              Europe / France / Provence-Alpes-Cote-dAzur 
+##                                                        2</code></pre>
+<pre class="r"><code># Focus on recent submissions
+dataset &lt;- subIHU[subIHU$Collection.date.YMD &gt; &quot;2021-04-01&quot;, ]
+
+
+table(dataset$Submission.date.YMD)
+
+table(dataset$Collection.date.YMD)
+
+hist(as.Date(subIHU$Submission.date.YMD), breaks = 500, main = &quot;Submission dates&quot;, xlab = &quot;Submission dates&quot;)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-36-1.png" width="672" /></p>
+<pre class="r"><code>hist(as.Date(subIHU$Collection.date.YMD), breaks = 500, freq = TRUE, xlab = &quot;Collection date&quot;, main = &quot;Collection dates, IHU&quot;, col = gray(0.9))
+axis(4)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-36-2.png" width="672" /></p>
+<pre class="r"><code>table(subIHU$Collection.date.YM)
+
+# Rewrite lineage to only plot the most frequent ones
+thr &lt;- 0.01 # Threshold for number of sequences: percentage of all sequences
+tb &lt;- table(dataset$Pango.lineage) # Number of seqs associated to each lineage
+isFreq &lt;- (tb/sum(tb) &gt; thr) # Identify lineages above the abundance threshold
+cbind(tb, isFreq) # Check
+dataset$newlineage &lt;- dataset$Pango.lineage # Create new column with new lineage
+dataset[!is.element(dataset$newlineage, names(tb[isFreq])), &quot;newlineage&quot;] &lt;- &quot;Other&quot; # Write unfrequent lineages as &quot;Other&quot;
+
+byLin &lt;- aggregate(dataset$newlineage, by = list(Lineage = dataset$newlineage, Collection.date = dataset$Collection.date.YMD), FUN = length)
+totdate &lt;- aggregate(dataset$newlineage, by = list(Collection.date = dataset$Collection.date.YMD), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+
+byL &lt;- merge(byLin, totdate, by = &quot;Collection.date&quot;)
+byL$p &lt;- byL$x / byL$tot
+
+# By month instead of just full collection date
+byLinMonth &lt;- aggregate(dataset$newlineage, by = list(Lineage = dataset$newlineage, Collection.date = dataset$Collection.date.YM), FUN = length)
+totdate &lt;- aggregate(dataset$newlineage, by = list(Collection.date = dataset$Collection.date.YM), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+
+byLM &lt;- merge(byLinMonth, totdate, by = &quot;Collection.date&quot;)
+byLM$p &lt;- byLM$x / byLM$tot
+
+
+
+byVar &lt;- aggregate(dataset$VariantShort, by = list(Variant = dataset$VariantShort, Collection.date = dataset$Collection.date.YMD), FUN = length)
+totdate &lt;- aggregate(dataset$VariantShort, by = list(Collection.date = dataset$Collection.date.YMD), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+
+byV &lt;- merge(byVar, totdate, by = &quot;Collection.date&quot;)
+byV$p &lt;- byV$x / byV$tot
+
+
+byL[order(byL$p), ]</code></pre>
+<pre class="r"><code># By full collection date
+par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 
+    mar = c(4, 4, 2, 1))
+bL &lt;- barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
+             xlab = &quot;&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;topleft&quot;, title = &quot;Pango lineage&quot;, cex = 1, pt.cex = 2, bty = &quot;n&quot;), col = rep(brewer.pal(9, &quot;Set1&quot;), 10), main = &quot;Lineages by Collection date, IHU&quot;)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-37-1.png" width="672" /></p>
+<pre class="r"><code>bLM &lt;- barplot(byLM$x ~ byLM$Lineage + byLM$Collection.date, border = gray(0, 0), 
+             xlab = &quot;&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;topleft&quot;, title = &quot;Pango lineage&quot;, cex = 1, pt.cex = 2, bty = &quot;n&quot;), col = rep(brewer.pal(9, &quot;Set1&quot;), 10), main = &quot;Lineages by Collection month, IHU&quot;)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-37-2.png" width="672" /></p>
+<pre class="r"><code>par(mar = c(4, 4, 1, 4), las = 2)
+barplot(byV$x ~ byV$Variant + byV$Collection.date, border = gray(0, 0), 
+             xlab = &quot;Collection date&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;right&quot;, cex = 0.9, pt.cex = 0.9, bty = &quot;n&quot;), col = brewer.pal(length(unique(byV$Variant)), &quot;Set3&quot;))</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-37-3.png" width="672" /></p>
+<p>What about recent submissions</p>
+<pre class="r"><code>tmp &lt;- subIHU[subIHU$Submission.date.YM &gt;= &quot;2021-10&quot;, ]
+dim(tmp)
+
+table(tmp$Submission.date)
+
+table(tmp$Collection.date)
+
+table(subIHU$Collection.date)</code></pre>
+</div>
+</div>
+</div>
+<div id="lineages-over-time" class="section level1">
+<h1>Lineages over time</h1>
+<div id="all-lineages-histograms" class="section level2">
+<h2>All lineages, histograms</h2>
+<div id="pango-clades" class="section level3">
+<h3>Pango clades</h3>
+<pre class="r"><code>tabFR &lt;- aggregate(dat$Virus.name, by = list(pango = dat$Pango.lineage, subM = dat$Collection.date.YM), FUN = length)
+
+tabFR.month &lt;- aggregate(dat$Virus.name, by = list(subM = dat$Collection.date.YM), FUN = length)
+
+x &lt;- barplot(tabFR$x ~ tabFR$pango + tabFR$subM, col = colsV[1:(length(unique(tabFR$pango)))], border = gray(0, 0), 
+             xlab = &quot;Collection month&quot;, ylab = &quot;Nb sequences&quot;)
+
+nV &lt;- 6
+par(xpd = TRUE)
+text(rep(x[length(x)] + (x[2]-x[1])/2, nV), tmp[1:nV, &quot;cumx&quot;] - tmp[1:nV, &quot;x&quot;]/2, labels = tmp[1:nV, &quot;pango&quot;], 
+     adj = 0)
+
+text(x, y = tabFR.month$x, tabFR.month$x, adj = c(0.5, -1), cex = 0.8)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-39-1.png" width="672" /></p>
+<pre class="r"><code>par(xpd = FALSE)</code></pre>
+<p>With threshold to plot lineage</p>
+<pre class="r"><code># Rewrite lineage to only plot the most frequent ones
+thr &lt;- 0.01 # Threshold for number of sequences: percentage of all sequences
+tb &lt;- table(dat$Pango.lineage) # Number of seqs associated to each lineage
+isFreq &lt;- (tb/sum(tb) &gt; thr) # Identify lineages above the abundance threshold
+cbind(tb, isFreq) # Check
+dat$newlineage &lt;- dat$Pango.lineage # Create new column with new lineage
+dat[!is.element(dat$newlineage, names(tb[isFreq])), &quot;newlineage&quot;] &lt;- &quot;Other&quot; # Write unfrequent lineages as &quot;Other&quot;</code></pre>
+<pre class="r"><code>byLin &lt;- aggregate(dat$newlineage, by = list(Lineage = dat$newlineage, Collection.date = dat$Collection.date.YMD), FUN = length)
+totdate &lt;- aggregate(dat$newlineage, by = list(Collection.date = dat$Collection.date.YMD), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+
+byL &lt;- merge(byLin, totdate, by = &quot;Collection.date&quot;)
+byL$p &lt;- byL$x / byL$tot
+
+# By week
+byWeek &lt;- aggregate(dat$newlineage, by = list(Lineage = dat$newlineage, Collection.Ywk = dat$Collection.Ywk), FUN = length)
+totdate &lt;- aggregate(dat$newlineage, by = list(Collection.Ywk = dat$Collection.Ywk), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+
+byW &lt;- merge(byWeek, totdate, by = &quot;Collection.Ywk&quot;)
+byW$p &lt;- byW$x / byW$tot
+
+# By month instead of just full collection date
+byLinMonth &lt;- aggregate(dat$newlineage, by = list(Lineage = dat$newlineage, Collection.date = dat$Collection.date.YM), FUN = length)
+totdate &lt;- aggregate(dat$newlineage, by = list(Collection.date = dat$Collection.date.YM), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+
+byLM &lt;- merge(byLinMonth, totdate, by = &quot;Collection.date&quot;)
+byLM$p &lt;- byLM$x / byLM$tot
+
+
+
+byVar &lt;- aggregate(dat$VariantShort, by = list(Variant = dat$VariantShort, Collection.date = dat$Collection.date.YMD), FUN = length)
+totdate &lt;- aggregate(dat$VariantShort, by = list(Collection.date = dat$Collection.date.YMD), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+
+byV &lt;- merge(byVar, totdate, by = &quot;Collection.date&quot;)
+byV$p &lt;- byV$x / byV$tot
+
+length(unique(byV$Variant))</code></pre>
+<pre><code>## [1] 7</code></pre>
+<pre class="r"><code>#byL[order(byL$p), ]
+
+# By full collection date
+par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 
+    mar = c(4, 4, 2, 1))
+bL &lt;- barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
+             xlab = &quot;&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;topleft&quot;, title = &quot;Pango lineage&quot;, cex = 1, pt.cex = 2, bty = &quot;n&quot;), col = rep(brewer.pal(9, &quot;Set1&quot;), 10), main = &quot;Lineages by Collection date&quot;)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-41-1.png" width="672" /></p>
+<pre class="r"><code># By week
+# Remove &quot;2021-NA&quot;
+byW &lt;- byW[!is.element(byW$Collection.Ywk, c(&quot;2020-NA&quot;, &quot;2021-NA&quot;)),]
+
+bW &lt;- barplot(byW$x ~ byW$Lineage + byW$Collection.Ywk, border = gray(0, 0), 
+             xlab = &quot;&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;topleft&quot;, title = &quot;Pango lineage&quot;, cex = 1, pt.cex = 2, bty = &quot;n&quot;), col = rep(brewer.pal(9, &quot;Set1&quot;), 10), main = &quot;Lineages by Collection week&quot;)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-41-2.png" width="672" /></p>
+<pre class="r"><code># As proportions
+barplot(byW$p ~ byW$Lineage + byW$Collection.Ywk, border = gray(0, 0), xlim = c(0, 150), 
+             xlab = &quot;&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;right&quot;, title = &quot;Pango lineage&quot;, cex = 1, pt.cex = 2, bty = &quot;n&quot;), col = rep(brewer.pal(9, &quot;Set1&quot;), 10), main = &quot;Lineages by Collection week&quot;)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-41-3.png" width="672" /></p>
+<pre class="r"><code># By month
+bLM &lt;- barplot(byLM$x ~ byLM$Lineage + byLM$Collection.date, border = gray(0, 0), 
+             xlab = &quot;&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;topleft&quot;, title = &quot;Pango lineage&quot;, cex = 1, pt.cex = 2, bty = &quot;n&quot;), col = rep(brewer.pal(9, &quot;Set1&quot;), 10), main = &quot;Lineages by Collection month&quot;)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-41-4.png" width="672" /></p>
+<pre class="r"><code>par(mar = c(4, 4, 1, 4), las = 2)
+barplot(byV$x ~ byV$Variant + byV$Collection.date, border = gray(0, 0), 
+             xlab = &quot;Collection date&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;right&quot;, cex = 0.9, pt.cex = 0.9, bty = &quot;n&quot;), col = brewer.pal(length(unique(byV$Variant)), &quot;Set3&quot;))</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-41-5.png" width="672" /></p>
+</div>
+<div id="variants-1" class="section level3">
+<h3>Variants</h3>
+<pre class="r"><code>subFRVar &lt;- aggregate(dat$Virus.name, by = list(month = dat$Collection.date.YM, variant = dat$VariantShort), FUN = length)
+subFRVar.month &lt;- aggregate(dat$Virus.name, by = list(month = dat$Collection.date.YM), FUN = length)
+
+x &lt;- barplot(subFRVar$x ~ subFRVar$variant + subFRVar$month, col = colsV2[1:(length(unique(subFRVar$variant)))], border = gray(0, 0), 
+             xlab = &quot;Collection month&quot;, ylab = &quot;Nb sequences&quot;, legend = TRUE, xlim= c(0, 30), args.legend = list(x = &quot;right&quot;, cex = 0.7, pt.cex = 0.9, bty = &quot;n&quot;))</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-42-1.png" width="672" /></p>
+<pre class="r"><code>#legend(x = &quot;topleft&quot;, legend = rev(unique(subFRVar$variant)), col = rev(colsV2[1:(length(unique(subFRVar$variant)))]), pch = 15, box.col = gray(0, 0), box.lwd = -1)</code></pre>
+<p>2021</p>
+<pre class="r"><code>subFRVar &lt;- aggregate(dat$Virus.name, by = list(week = dat$Collection.week, variant = dat$VariantShort), FUN = length)
+subFRVar.week &lt;- aggregate(dat$Virus.name, by = list(week = dat$Collection.week), FUN = length)
+
+subFRVar2 &lt;- merge(subFRVar, subFRVar.week, by = &quot;week&quot;)
+names(subFRVar2)[c(3,4)] &lt;- c(&quot;x&quot;, &quot;nbSeq&quot;)
+subFRVar2$prop &lt;- subFRVar2$x / subFRVar2$nbSeq
+
+# Consistency check 
+# aggregate(subFRVar2[, 3], by = list(subFRVar2$week), FUN= sum) - subFRVar.week
+
+x &lt;- barplot(subFRVar$x ~ subFRVar$variant + subFRVar$week, col = colsV2[1:(length(unique(subFRVar$variant)))], border = gray(0, 0), 
+             xlab = &quot;Collection week&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, xlim= c(0, 50), args.legend = list(x = &quot;right&quot;, cex = 0.7, pt.cex = 0.9, bty = &quot;n&quot;))</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-43-1.png" width="672" /></p>
+<pre class="r"><code>#legend(x = &quot;topleft&quot;, legend = rev(unique(subFRVar$variant)), col = rev(colsV2[1:(length(unique(subFRVar$variant)))]), pch = 15, box.col = gray(0, 0), box.lwd = -1)</code></pre>
+<div id="proportion" class="section level4">
+<h4>Proportion</h4>
+<pre class="r"><code># Remove week if too few sequences
+thrNbSeq &lt;- 100
+subFRVar2 &lt;- subFRVar2[subFRVar2$nbSeq &gt; thrNbSeq, ]
+
+nbW &lt;- length(unique(subFRVar2$week))
+# Proportion 
+x &lt;- barplot(subFRVar2$prop ~ subFRVar2$variant + subFRVar2$week, col = colsV2[1:(length(unique(subFRVar2$variant)))], border = gray(0, 0), 
+             xlab = &quot;Collection week&quot;, ylab = &quot;Proportion parmi les sequences&quot;, 
+             legend = TRUE, xlim= c(0, 55), args.legend = list(x = &quot;right&quot;, cex = 0.7, pt.cex = 0.9, bty = &quot;n&quot;), width = rep(1, nbW))
+
+par(xpd = TRUE)
+yy &lt;- 1
+adjy &lt;- -0.5
+cexx &lt;- 0.6
+# text(x, y = yy, labels = subFRVar.week$x, adj = c(0.5, adjy), cex = cexx)
+# text(x = max(x) + x[2] - x[1], y = yy, adj = c(0, adjy), cex = cexx, labels = &quot;Nb sequences&quot;)
+
+posW &lt;- as.data.frame(cbind(x = x, week = subFRVar.week$week))</code></pre>
+<pre><code>## Warning in cbind(x = x, week = subFRVar.week$week): number of rows of result is
+## not a multiple of vector length (arg 1)</code></pre>
+<pre class="r"><code>posWFlash &lt;- posW[is.element(posW$week, datesFlash.all$week), ]
+yFlash &lt;- 1.09
+text(x = c(posWFlash$x), 
+     y = yFlash, adj = c(0.5, 2), 
+     labels = &quot;*&quot;)
+text(x = max(x) + x[2] - x[1], y = yFlash, adj = c(0, 2), labels = &quot;Semaine Flash&quot;, cex = cexx)
+
+axis(4, pos = max(x) + (x[2] - x[1])/2)
+par(xpd = FALSE)
+
+mtext(side = 1, &quot;@flodebarre, données Gisaid&quot;, line = 3.5, adj = 0, cex = 0.6, col = gray(0.5), las = 1)</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-44-1.png" width="672" /></p>
+</div>
+</div>
+</div>
+<div id="section" class="section level2">
+<h2></h2>
+<p>Load TESSy data</p>
 <pre class="r"><code>dlData &lt;- FALSE # Whether to download the data again from the ECDC website
 source(&quot;TESSy.R&quot;)</code></pre>
 </div>
-<div id="beta" class="section level3">
-<h3>Beta</h3>
+<div id="beta" class="section level2">
+<h2>Beta</h2>
 <pre class="r"><code>tessy.Beta &lt;- (dat.tessy.FR$variant == &quot;B.1.351&quot;)
 tmp &lt;- dat.tessy.FR[tessy.Beta, ]
 
@@ -748,17 +1109,9 @@ tmp.nBeta &lt;- aggregate(tmp$number_detections_variant, by = list(week = tmp$we
 # Number of sequences that week
 tmp.n &lt;- aggregate(dat.tessy.FR$number_detections_variant, by = list(week = dat.tessy.FR$week), FUN = sum, na.rm = TRUE)
 tmp.n2 &lt;- aggregate(dat.tessy.FR$number_sequenced, by = list(week = dat.tessy.FR$week), FUN = unique, na.rm = TRUE)
-cbind(tmp.n, tmp.n2)</code></pre>
-<pre><code>##   week    x week    x
-## 1   19 3013   19 3013
-## 2   20 1483   20 1483
-## 3   21 3040   21 3040
-## 4   22 1094   22 1094
-## 5   23 1791   23 1791
-## 6   24  760   24  760
-## 7   25 1798   25 1798
-## 8   26 1466   26 1466</code></pre>
-<pre class="r"><code># Merge and name
+cbind(tmp.n, tmp.n2)
+
+# Merge and name
 tessyBeta.byweek &lt;- merge(tmp.nBeta, tmp.n, by = &quot;week&quot;)
 names(tessyBeta.byweek) &lt;- c(&quot;week&quot;, &quot;nBeta&quot;, &quot;n&quot;)
 tessyBeta.byweek$p &lt;- tessyBeta.byweek$nBeta / tessyBeta.byweek$n
@@ -766,15 +1119,6 @@ tessyBeta.byweek$p &lt;- tessyBeta.byweek$nBeta / tessyBeta.byweek$n
 tessyBeta.byweek$deltaCI &lt;- with(tessyBeta.byweek, 1.96 * sqrt(p * (1-p)/n))
 
 tessyBeta.byweek</code></pre>
-<pre><code>##   week nBeta    n          p     deltaCI
-## 1   19   305 3013 0.10122801 0.010770395
-## 2   20   182 1483 0.12272421 0.016700085
-## 3   21   292 3040 0.09605263 0.010474794
-## 4   22    85 1094 0.07769653 0.015862993
-## 5   23   158 1791 0.08821887 0.013135129
-## 6   24    50  760 0.06578947 0.017625841
-## 7   25   202 1798 0.11234705 0.014597002
-## 8   26    55 1466 0.03751705 0.009727472</code></pre>
 <pre class="r"><code># Same with GISAID data on TESSy
 gisaidTESSy.Beta &lt;- (dat.gisaid.FR$variant == &quot;B.1.351&quot;)
 gisaidTESSy.byweek &lt;- dat.gisaid.FR[which(gisaidTESSy.Beta), ]
@@ -796,11 +1140,10 @@ gisaidTESSy.byweek</code></pre>
 
 # Version 2 with sublineages
 is.Beta &lt;- (substr(dat$Pango.lineage, 1, 7) == &quot;B.1.351&quot;)
-sum(is.Beta)</code></pre>
-<pre><code>## [1] 2959</code></pre>
-<pre class="r"><code>mean(is.Beta)</code></pre>
-<pre><code>## [1] 0.05153346</code></pre>
-<pre class="r"><code># Aggregate the data by week of collection
+#sum(is.Beta)
+#mean(is.Beta)
+
+# Aggregate the data by week of collection
 tmp.mean &lt;- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = mean)
 # Number of sequences that week
 tmp.n &lt;- aggregate(is.Beta, by = list(week = dat$Collection.week), FUN = length)
@@ -868,41 +1211,150 @@ par(xpd = TRUE)
 text(datesFlash[datesFlash$week &gt;=18, &quot;week&quot;], -0.02, &quot;*&quot;)
 par(xpd = FALSE)
 legend(&quot;topleft&quot;, col = cols[c(&quot;TESSy&quot;, &quot;GISAID&quot;, &quot;GISAID&quot;, &quot;Flash&quot;, &quot;Flash&quot;)], legend = c(&quot;EDCD, source TESSy&quot;, &quot;ECDC, source GISAID&quot;, &quot;GISAID with country = France&quot;, &quot;Flash surveys&quot;, &quot;Flash surveys without Overseas France&quot;), pch = pchs[c(&quot;TESSy&quot;, &quot;TESSyGISAID&quot;, &quot;GISAID&quot;, &quot;Flash&quot;, &quot;Flash2&quot;)], bty = &quot;n&quot;)</code></pre>
-<p><img src="figuresFrance_files/figure-html/unnamed-chunk-28-1.png" width="672" /></p>
-<p>There are 2959 Beta sequences.</p>
-<p>This is 0.0515335 of all sequences.<br />
-This is 0.0737519 of sequences collected since April (included) This is 0.0694548 of sequences collected since May (included) This is 0.0562679 of sequences collected since June (included)</p>
-<pre class="r"><code>tessyBeta.byweek</code></pre>
-<pre><code>##   week nBeta    n          p     deltaCI
-## 1   19   305 3013 0.10122801 0.010770395
-## 2   20   182 1483 0.12272421 0.016700085
-## 3   21   292 3040 0.09605263 0.010474794
-## 4   22    85 1094 0.07769653 0.015862993
-## 5   23   158 1791 0.08821887 0.013135129
-## 6   24    50  760 0.06578947 0.017625841
-## 7   25   202 1798 0.11234705 0.014597002
-## 8   26    55 1466 0.03751705 0.009727472</code></pre>
-<pre class="r"><code>sum(tessyBeta.byweek$nBeta)</code></pre>
-<pre><code>## [1] 1329</code></pre>
-<pre class="r"><code>sum(tessyBeta.byweek$nBeta)/sum(tessyBeta.byweek$n)</code></pre>
-<pre><code>## [1] 0.09200415</code></pre>
-<pre class="r"><code>sum(unique(dat.tessy.FR$number_sequenced))</code></pre>
-<pre><code>## [1] 14445</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-48-1.png" width="672" /></p>
+<p>There are 3272 Beta sequences.</p>
+<p>This is 0.0288099 of all sequences.<br />
+This is 0.0260842 of sequences collected since April (included) This is 0.016559 of sequences collected since May (included) This is 0.0081499 of sequences collected since June (included)</p>
+<pre class="r"><code>tessyBeta.byweek
+
+sum(tessyBeta.byweek$nBeta)
+sum(tessyBeta.byweek$nBeta)/sum(tessyBeta.byweek$n)
+
+sum(unique(dat.tessy.FR$number_sequenced))</code></pre>
+<div id="details-on-the-beta-variant" class="section level3">
+<h3>Details on the Beta variant</h3>
+<pre class="r"><code>dat.Beta &lt;- dat[which(is.Beta), ]
+
+table(dat.Beta$submitter)
+#head(dat.Beta)
+
+tt &lt;- table(dat.Beta[which(is.na(dat.Beta$Collection.date.YMD)), &quot;submitter&quot;])
+tt
+sum(tt)
+
+tt2 &lt;- table(dat.Beta[which(is.na(dat.Beta$region)), &quot;submitter&quot;])
+tt2
+
+# -&gt; dates and regions are OK
+
+agg.Beta.region.month1 &lt;- aggregate(is.Beta, by = list(region = dat$region, month = dat$Collection.date.YM), FUN = sum)
+names(agg.Beta.region.month1)[3] &lt;- &quot;nBeta&quot;
+
+agg.Beta.region.month2 &lt;- aggregate(is.Beta, by = list(region = dat$region, month = dat$Collection.date.YM), FUN = length)
+names(agg.Beta.region.month2)[3] &lt;- &quot;nSeq&quot;
+
+agg.Beta.region.month &lt;- merge(agg.Beta.region.month1, agg.Beta.region.month2, all = TRUE)
+
+agg.Beta.region.month$pBeta &lt;- agg.Beta.region.month$nBeta / agg.Beta.region.month$nSeq
+agg.Beta.region.month$deltaCI &lt;- 1.96 * sqrt((agg.Beta.region.month$pBeta * (1-agg.Beta.region.month$pBeta)) / agg.Beta.region.month$nSeq)</code></pre>
+<pre class="r"><code>max(agg.Beta.region.month$nSeq)</code></pre>
+<pre><code>## [1] 4455</code></pre>
+<pre class="r"><code>max(agg.Beta.region.month$nBeta)</code></pre>
+<pre><code>## [1] 408</code></pre>
+<pre class="r"><code># Remove single sequence
+agg.Beta.region.month &lt;- agg.Beta.region.month[agg.Beta.region.month$nBeta != agg.Beta.region.month$nSeq, ]
+
+# Consistency check
+sum(agg.Beta.region.month$nBeta)</code></pre>
+<pre><code>## [1] 3115</code></pre>
+<pre class="r"><code>fname &lt;- &quot;beta_regions.pdf&quot;
+pdf(file = fname, width = 10, height = 12)
+layout(matrix(c(0, 7, 14, 
+         9, 8, 6, 
+         3, 4, 2,
+         12, 1, 13, 
+         10, 11, 5), byrow = TRUE, ncol = 3))
+cexx &lt;- 0.7
+ln &lt;- 2
+for(reg in regions){
+
+  sub &lt;- agg.Beta.region.month[agg.Beta.region.month$region == reg, ]
+  # Source trick https://stackoverflow.com/questions/6242955/converting-year-and-month-yyyy-mm-format-to-a-date
+  
+  xmin &lt;- min(agg.Beta.region.month[agg.Beta.region.month$nBeta&gt;0, &quot;month&quot;])
+  xmax &lt;- max(agg.Beta.region.month[agg.Beta.region.month$nBeta&gt;0, &quot;month&quot;])
+  xx &lt;- seq(as.Date(paste(xmin, &quot;-01&quot;, sep=&quot;&quot;)), as.Date(paste(xmax, &quot;-01&quot;, sep=&quot;&quot;)), by = &quot;month&quot;)
+  
+  
+  coln &lt;- &quot;#2A7A6A&quot;
+  colp &lt;- &quot;#BF9142&quot;#&quot;#f18956&quot;
+  
+  ymax &lt;- max(agg.Beta.region.month$nBeta)
+  xa &lt;- pretty(seq(0, ymax, by = 50))
+  ymax &lt;- max(xa)
+  
+  par(mgp = c(2.75, 0.25, 0), tck = -0.01, 
+      mar = c(5, 4, 3, 4), 
+      las = 1)
+  
+  plot(as.Date(paste(sub$month, &quot;-01&quot;, sep=&quot;&quot;)), sub$nBeta, xlim = range(xx), ylim = c(0, max(agg.Beta.region.month$nBeta)), axes = FALSE, 
+       xlab = &quot;Collection month&quot;, 
+       ylab = &quot;&quot;, yaxs = &quot;i&quot;, 
+       type = &quot;n&quot;)
+  
+  for(i in seq(0, ymax, by = 50)){
+    abline(h = i, col = gray(0.9))
+  }
+  
+  points(as.Date(paste(sub$month, &quot;-01&quot;, sep=&quot;&quot;)), sub$nBeta, xlim = range(xx), 
+       col = coln, pch = 16, 
+       type = &quot;h&quot;, lwd = 20, lend = &quot;butt&quot;)
+  
+  axis(1, at = xx, labels = format.Date(xx, &quot;%Y %b&quot;), las = 3, cex.axis = 0.6)
+  
+  axis(2, col = coln, col.axis = coln, at = xa)
+  mtext(side = 2, text = &quot;Number of Beta&quot;, las = 3, line = ln, col = coln, cex = cexx)
+  points(as.Date(paste(sub$month, &quot;-01&quot;, sep=&quot;&quot;)), sub$pBeta * ymax, col = colp, pch = 17, type = &quot;o&quot;, lwd = 0.5, cex = 1.5)
+  arrows(x0 = as.Date(paste(sub$month, &quot;-01&quot;, sep=&quot;&quot;)), 
+         y0 = (sub$pBeta - sub$deltaCI)* ymax, 
+         x1 = as.Date(paste(sub$month, &quot;-01&quot;, sep=&quot;&quot;)), 
+         y1 = (sub$pBeta + sub$deltaCI)* ymax,
+         code = 3, length = 0, lwd = 2, col = colp
+  )
+  
+  axis(4, col = colp, col.axis = colp, at = xa, labels = xa /max(xa))
+  mtext(side = 4, text = &quot;Proportion of Beta&quot;, las = 3, line = ln, col = colp, cex = cexx)
+  
+  title(main = reg)
+
+}
+
+plot(0, type = &quot;n&quot;, axes = FALSE, xlab = &quot;&quot;, ylab = &quot;&quot;, xlim = c(-1, 1), ylim = c(-1, 1))
+
+legend(x = 0, y = 0, legend = paste0(&quot;Source: GISAID, &quot;, thedate, &quot;.\nDistribution across regions and months of the &quot;, toString(sum(agg.Beta.region.month$nBeta)), &quot; seqs \nfor which month and location data are available \n(out of the &quot;, toString(sum(is.Beta)), &quot; Beta sequences).\nBeta: B.1.351*\n\nAttention: Some known data quality issues\n- Collection date is sometimes not the actual collection date \n   but sequencing date;\n- Location is sometimes sequencing lab \n   instead of sampling location.&quot;), xjust = 0.5, yjust = 0., bty = &quot;n&quot;, cex = 0.78)
+
+dev.off()</code></pre>
+<pre><code>## quartz_off_screen 
+##                 2</code></pre>
+<pre class="r"><code>system(paste0(&quot;open &quot;, fname))</code></pre>
+<p>IDF in May</p>
+<pre class="r"><code>sub &lt;- dat[which(dat$region == &quot;Île-de-France&quot; &amp; is.Beta), ]
+
+table(sub$submitter, sub$Pango.lineage)
+
+sub2 &lt;- dat[which(dat$region == &quot;Île-de-France&quot; &amp; dat$Collection.date.YM == &quot;2021-05&quot;), ]
+table(sub2$submitter)
+
+table(sub$div4, useNA = &quot;ifany&quot;)
+
+
+table(dat$region, dat$submitter)</code></pre>
 </div>
 </div>
-<div id="aa-changes" class="section level2">
-<h2>AA changes</h2>
+</div>
+<div id="aa-changes" class="section level1">
+<h1>AA changes</h1>
 <p>Load screening data (criblage)</p>
 <pre class="r"><code>source(&quot;publicData_criblage.R&quot;)</code></pre>
 <pre class="r"><code># Extract AA
 tmp &lt;- gsub(&#39;\\(&#39;, &#39;&#39;, dat$AA.Substitutions)
 tmp &lt;- gsub(&#39;\\)&#39;, &#39;&#39;, tmp)
 aa &lt;- strsplit(tmp, &quot;,&quot;)</code></pre>
-<div id="l452r" class="section level4">
-<h4>L452R</h4>
+<div id="l452r" class="section level2">
+<h2>L452R</h2>
 <pre class="r"><code># Extract information on whether the S:L452R is present as aa substitution in the sequence
 i.L452R &lt;- sapply(aa, function(x){(is.element(&quot;Spike_L452R&quot;, x))})</code></pre>
-<p>Overall, fraction of all sequences with the L452R mutation: 0.0447935.</p>
+<p>Overall, fraction of all sequences with the L452R mutation: 0.4258268.</p>
 <pre class="r"><code># Aggregate the data by week of collection
 # Proportion of sequences with L452R that week
 tmp.mean &lt;- aggregate(i.L452R, by = list(week = dat$Collection.week), FUN = mean)
@@ -913,12 +1365,31 @@ L452R.byweek &lt;- merge(tmp.mean, tmp.n, by = &quot;week&quot;)
 names(L452R.byweek) &lt;- c(&quot;week&quot;, &quot;p&quot;, &quot;n&quot;)
 # Confidence interval for proportion
 L452R.byweek$deltaCI &lt;- with(L452R.byweek, 1.96 * sqrt(p * (1-p)/n))</code></pre>
-<p>Which variant harbor the L452R mutation?</p>
-<pre class="r"><code>table(dat[which(dat$Collection.week &gt;= 21 &amp; i.L452R), &quot;VariantShort&quot;])</code></pre>
+<p>Which variants harbor the L452R mutation?</p>
+<pre class="r"><code>tV &lt;- table(dat[which(dat$Collection.week &gt;= 21 &amp; i.L452R), &quot;VariantShort&quot;], useNA = &quot;ifany&quot;)
+tV/sum(tV)*100</code></pre>
 <pre><code>## 
-##           Alpha   Delta Epsilon   Kappa 
-##      72      10    1661       2       1</code></pre>
+##                   Alpha       Delta 
+##  0.88809947  0.03700414 99.07489639</code></pre>
+<p>Pango lineages with the L452R mutation</p>
+<pre class="r"><code>table(dat[which(dat$Collection.week &gt;= 21 &amp; i.L452R), &quot;Pango.lineage&quot;])</code></pre>
+<pre><code>## 
+##         A      AY.1     AY.10     AY.11     AY.12     AY.13     AY.14     AY.15 
+##         1        22        34        14        34         3         4        10 
+##     AY.16     AY.17     AY.19      AY.2     AY.20     AY.21     AY.22     AY.23 
+##       208        76        13         1       155         5        34       179 
+##     AY.24     AY.25     AY.26     AY.27     AY.29      AY.3     AY.30     AY.32 
+##        80        54       147         2         8        20        23        14 
+##     AY.33     AY.34     AY.36     AY.37     AY.38      AY.4    AY.4.1      AY.5 
+##       890      1721        48       337        10     20635         1      1645 
+##    AY.5.1    AY.5.2      AY.6      AY.7    AY.7.1    AY.7.2      AY.9       B.1 
+##        25        13        78        12       390       123      1281         1 
+## B.1.1.528   B.1.1.7 B.1.617.1 B.1.617.2   B.1.629   B.1.630      C.16      C.36 
+##         1        15         1     11812         6         3         1         5 
+##    C.36.3      None 
+##        39       302</code></pre>
 <pre class="r"><code>dat.France$deltaCI_C1 &lt;- 1.96 * sqrt(dat.France$tx_C1/100 * (1-dat.France$tx_C1/100) / (dat.France$nb_C1 + dat.France$nb_C0))</code></pre>
+<p>Comparison of the frequency of L452R in GISAID vs criblage</p>
 <pre class="r"><code>par(las = 1, mar = c(4, 4, 3, 4), 
     mgp = c(2., 0.5, 0), tck = -0.02, 
     xpd = FALSE)
@@ -931,51 +1402,60 @@ for(i in seq(0, 1, by = 0.1)) abline(h = i, col = gray(0.9))
 
 arrows(x0 = L452R.byweek$week, y0 = L452R.byweek$p + L452R.byweek$deltaCI, 
        x1 = L452R.byweek$week, y1 = L452R.byweek$p - L452R.byweek$deltaCI, 
-       code = 3, angle = 90, length = 0.1, col = cols[&quot;GISAID&quot;])
-
-points(dat.France$week, dat.France$tx_C1/100, col = cols[&quot;criblage&quot;], pch = 18)
+       code = 3, angle = 90, length = 0.1, col = cols[&quot;GISAID&quot;])</code></pre>
+<pre><code>## Warning in arrows(x0 = L452R.byweek$week, y0 = L452R.byweek$p +
+## L452R.byweek$deltaCI, : zero-length arrow is of indeterminate angle and so
+## skipped</code></pre>
+<pre class="r"><code>points(dat.France$week, dat.France$tx_C1/100, col = cols[&quot;criblage&quot;], pch = 18)
 
 arrows(x0 = dat.France$week, y0 = dat.France$tx_C1/100 + dat.France$deltaCI_C1, 
        x1 = dat.France$week, y1 = dat.France$tx_C1/100 - dat.France$deltaCI_C1, 
        code = 3, angle = 90, length = 0.1, col = cols[&quot;criblage&quot;])
 
-legend(&quot;topleft&quot;, col = cols[c(&quot;GISAID&quot;, &quot;criblage&quot;)], legend = c(&quot;in GISAID with country = France&quot;, &quot;Criblage&quot;), pch = c(16, 18), bty = &quot;n&quot;)
+legend(&quot;topleft&quot;, col = cols[c(&quot;GISAID&quot;, &quot;criblage&quot;)], legend = c(&quot;in GISAID&quot;, &quot;Criblage&quot;), pch = c(16, 18), bty = &quot;n&quot;)
 
 par(xpd = TRUE)
 text(datesFlash[which(datesFlash$week &gt;= min(dat.France$week, na.rm = TRUE) -1), &quot;week&quot;], -0.125, &quot;*&quot;)</code></pre>
-<p><img src="figuresFrance_files/figure-html/unnamed-chunk-36-1.png" width="672" /></p>
-<p>Que se passe-t-il en semaine 24-25 ? Nombres de sequences par regions</p>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-61-1.png" width="672" /></p>
+<p>Que se passe-t-il en semaine 24-25, pourquoi un tel écart ? Etait-ce un focus sur certaines regions ?</p>
+<p>Nombres de sequences par regions</p>
 <pre class="r"><code>tmp25 &lt;- dat[which(i.L452R &amp; dat$Collection.week == 25), ]
 table(tmp25$region)</code></pre>
 <pre><code>## 
-##      AUVERGNERHONEALPES   BOURGOGNEFRANCHECOMTE                BRETAGNE 
-##                     196                      38                       2 
-##        CENTREVALDELOIRE                GRANDEST           HAUTSDEFRANCE 
-##                      22                      36                       4 
-##             ILEDEFRANCE               NORMANDIE       NOUVELLEAQUITAINE 
-##                     133                       3                      66 
-##               OCCITANIE           PAYSDELALOIRE             PAYSDELOIRE 
-##                      26                       3                       2 
-## PROVENCEALPESCOTED&#39;AZUR 
-##                      13</code></pre>
+##       Auvergne-Rhône-Alpes    Bourgogne-Franche-Comté 
+##                        201                         38 
+##                   Bretagne        Centre-Val de Loire 
+##                         14                         23 
+##                  Grand Est            Hauts-de-France 
+##                         39                          8 
+##              Île-de-France                  Normandie 
+##                        133                          5 
+##         Nouvelle-Aquitaine                  Occitanie 
+##                         72                         30 
+##           Pays de la Loire Provence-Alpes-Côte d&#39;Azur 
+##                          4                         17</code></pre>
 <pre class="r"><code>tmp24 &lt;- dat[which(i.L452R &amp; dat$Collection.week == 24), ]
 table(tmp24$region)</code></pre>
 <pre><code>## 
-##      AUVERGNERHONEALPES   BOURGOGNEFRANCHECOMTE        CENTREVALDELOIRE 
-##                      33                       4                       5 
-##                GRANDEST           HAUTSDEFRANCE             ILEDEFRANCE 
-##                       6                      12                      43 
-##       NOUVELLEAQUITAINE               OCCITANIE           PAYSDELALOIRE 
-##                      14                       5                       5 
-## PROVENCEALPESCOTED&#39;AZUR 
-##                       2</code></pre>
+##       Auvergne-Rhône-Alpes    Bourgogne-Franche-Comté 
+##                         35                          4 
+##                   Bretagne        Centre-Val de Loire 
+##                          2                          5 
+##                  Grand Est            Hauts-de-France 
+##                          6                         13 
+##              Île-de-France                  Normandie 
+##                         43                          1 
+##         Nouvelle-Aquitaine                  Occitanie 
+##                         33                          5 
+##           Pays de la Loire Provence-Alpes-Côte d&#39;Azur 
+##                          5                          3</code></pre>
 </div>
-<div id="e484k" class="section level4">
-<h4>E484K</h4>
+<div id="e484k" class="section level2">
+<h2>E484K</h2>
 <pre class="r"><code># Extract information on whether the S:E484K is present as aa substitution in the sequence
 i.E484K &lt;- sapply(aa, function(x){(is.element(&quot;Spike_E484K&quot;, x))})
 mean(i.E484K)</code></pre>
-<pre><code>## [1] 0.08645222</code></pre>
+<pre><code>## [1] 0.05059346</code></pre>
 <pre class="r"><code># Aggregate the data by week of collection
 # Proportion of sequences with L452R that week
 tmp.mean &lt;- aggregate(i.E484K, by = list(week = dat$Collection.week), FUN = mean)
@@ -986,10 +1466,11 @@ E484K.byweek &lt;- merge(tmp.mean, tmp.n, by = &quot;week&quot;)
 names(E484K.byweek) &lt;- c(&quot;week&quot;, &quot;p&quot;, &quot;n&quot;)
 # Confidence interval for proportion
 E484K.byweek$deltaCI &lt;- with(E484K.byweek, 1.96 * sqrt(p * (1-p)/n))</code></pre>
+<p>Variants with the mutation</p>
 <pre class="r"><code>table(dat[which(dat$Collection.week &gt;= 21 &amp; i.E484K), &quot;VariantShort&quot;])</code></pre>
 <pre><code>## 
-##       Alpha  Beta Delta   Eta Gamma  Iota 
-##   198   147   251     1    68   151     1</code></pre>
+##       Alpha  Beta Delta Gamma    Mu 
+##   268   324   441    14   317    21</code></pre>
 <pre class="r"><code>dat.France$deltaCI_A1 &lt;- 1.96 * sqrt(dat.France$tx_A1/100 * (1-dat.France$tx_A1/100) / (dat.France$nb_A1 + dat.France$nb_A0))</code></pre>
 <pre class="r"><code>par(las = 1, mar = c(4, 4, 3, 4), 
     mgp = c(2., 0.5, 0), tck = -0.02, 
@@ -1003,9 +1484,11 @@ for(i in seq(0, 1, by = 0.1)) abline(h = i, col = gray(0.9))
 
 arrows(x0 = E484K.byweek$week, y0 = E484K.byweek$p + E484K.byweek$deltaCI, 
        x1 = E484K.byweek$week, y1 = E484K.byweek$p - E484K.byweek$deltaCI, 
-       code = 3, angle = 90, length = 0.1, col = cols[&quot;GISAID&quot;])
-
-points(dat.France$week, dat.France$tx_A1/100, col = cols[&quot;criblage&quot;], pch = 18)
+       code = 3, angle = 90, length = 0.1, col = cols[&quot;GISAID&quot;])</code></pre>
+<pre><code>## Warning in arrows(x0 = E484K.byweek$week, y0 = E484K.byweek$p +
+## E484K.byweek$deltaCI, : zero-length arrow is of indeterminate angle and so
+## skipped</code></pre>
+<pre class="r"><code>points(dat.France$week, dat.France$tx_A1/100, col = cols[&quot;criblage&quot;], pch = 18)
 
 arrows(x0 = dat.France$week, y0 = dat.France$tx_A1/100 + dat.France$deltaCI_A1, 
        x1 = dat.France$week, y1 = dat.France$tx_A1/100 - dat.France$deltaCI_A1, 
@@ -1015,7 +1498,7 @@ legend(&quot;topleft&quot;, col = cols[c(&quot;GISAID&quot;, &quot;criblage&quot
 
 par(xpd = TRUE)
 text(datesFlash[which(datesFlash$week &gt;= min(dat.France$week, na.rm = TRUE) -1), &quot;week&quot;], -0.125, &quot;*&quot;)</code></pre>
-<p><img src="figuresFrance_files/figure-html/unnamed-chunk-41-1.png" width="672" /></p>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-66-1.png" width="672" /></p>
 <pre class="r"><code>par(las = 1)
 plot(dat.France$week, dat.France$nb_pos/7 * dat.France$tx_A1/100, col = cols[&quot;criblage&quot;], pch = 18, 
      yaxs = &quot;i&quot;, 
@@ -1025,59 +1508,81 @@ plot(dat.France$week, dat.France$nb_pos/7 * dat.France$tx_A1/100, col = cols[&qu
 arrows(x0 = dat.France$week, y0 = dat.France$nb_pos/7 * (dat.France$tx_A1/100 + dat.France$deltaCI_A1), 
        x1 = dat.France$week, y1 = dat.France$nb_pos/7 * (dat.France$tx_A1/100 - dat.France$deltaCI_A1), 
        code = 3, angle = 90, length = 0.1, col = cols[&quot;criblage&quot;])</code></pre>
-<p><img src="figuresFrance_files/figure-html/unnamed-chunk-42-1.png" width="672" /></p>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-67-1.png" width="672" /></p>
 <pre class="r"><code>for(cw in 22:28){
   tmp &lt;- dat[which(dat$Collection.week == cw &amp; i.E484K), ]
   print(cw)
   tb &lt;- table(tmp$VariantShort)
   print(tb)
   print(c(sum(tb), tb[&quot;Beta&quot;], tb[&quot;Beta&quot;]/sum(tb)))
+}
+table(dat[which(dat$Collection.week &gt;= 21 &amp; i.E484K), &quot;VariantShort&quot;])</code></pre>
+</div>
+</div>
+<div id="drom" class="section level1">
+<h1>DROM</h1>
+<pre class="r"><code>datM &lt;- dat[dat$country == &quot;Martinique&quot;, ]
+datG &lt;- dat[dat$country == &quot;Guadeloupe&quot;, ]
+
+
+for(col in c(&quot;Pango.lineage&quot;, &quot;VariantShort&quot;)){
+for(ctr in c(&quot;Martinique&quot;, &quot;Guadeloupe&quot;)){
+dataset &lt;- dat[dat$country == ctr, ]
+
+# Extract AA
+tmp &lt;- gsub(&#39;\\(&#39;, &#39;&#39;, dataset$AA.Substitutions)
+tmp &lt;- gsub(&#39;\\)&#39;, &#39;&#39;, tmp)
+aaa &lt;- strsplit(tmp, &quot;,&quot;)
+
+# Extract information on whether the S:L452R is present as aa substitution in the sequence
+ii.L452R &lt;- sapply(aaa, function(x){(is.element(&quot;Spike_L452R&quot;, x))})
+
+cat(ctr, &quot;\n&quot;)
+print(table(dataset[which(ii.L452R), &quot;Pango.lineage&quot;]))
+
+byLin &lt;- aggregate(dataset[, col], by = list(Lineage = dataset[, col], Collection.date = dataset$Collection.date.YMD), FUN = length)
+totdate &lt;- aggregate(dataset[, col], by = list(Collection.date = dataset$Collection.date.YMD), FUN = length)
+names(totdate)[2] &lt;- &quot;tot&quot;
+byL &lt;- merge(byLin, totdate, by = &quot;Collection.date&quot;)
+byL$p &lt;- byL$x / byL$tot
+# byL[order(byL$p), ]
+
+# By full collection date
+par(mfrow = c(1, 1), las = 2, cex.axis = 0.7, 
+    mar = c(4, 4, 2, 1))
+bL &lt;- barplot(byL$x ~ byL$Lineage + byL$Collection.date, border = gray(0, 0), 
+             xlab = &quot;&quot;, ylab = &quot;Nb sequences&quot;, 
+             legend = TRUE, args.legend = list(x = &quot;topleft&quot;, title = col, cex = 1, pt.cex = 2, bty = &quot;n&quot;), col = rep(brewer.pal(9, &quot;Set1&quot;), 10), main = paste0(col, &quot; by Collection date, &quot;, ctr))
+par(xpd = FALSE)
+for(i in 1:100){
+  abline(h = i, col = gray(1))
+}
+}
 }</code></pre>
-<pre><code>## [1] 22
+<pre><code>## Martinique 
 ## 
-##       Alpha  Beta   Eta Gamma 
-##    29    12    33     5     3 
-##                Beta      Beta 
-## 82.000000 33.000000  0.402439 
-## [1] 23
+##     AY.20     AY.34      AY.4      AY.9 B.1.617.2 
+##         1       216        14         4        13</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-69-1.png" width="672" /></p>
+<pre><code>## Guadeloupe 
 ## 
-##       Alpha  Beta   Eta Gamma 
-##    39    37    47    11    13 
-##                    Beta        Beta 
-## 147.0000000  47.0000000   0.3197279 
-## [1] 24
+##     AY.11     AY.25     AY.26     AY.34      AY.4      AY.5      AY.6      AY.9 
+##         1         1         1        17       113        11         1        15 
+##   B.1.429 B.1.617.1 B.1.617.2   B.1.637 
+##         4         2       178         3</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-69-2.png" width="672" /></p>
+<pre><code>## Martinique 
 ## 
-##       Alpha  Beta   Eta Gamma 
-##    13    17    20     6    11 
-##                  Beta       Beta 
-## 67.0000000 20.0000000  0.2985075 
-## [1] 25
+##     AY.20     AY.34      AY.4      AY.9 B.1.617.2 
+##         1       216        14         4        13</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-69-3.png" width="672" /></p>
+<pre><code>## Guadeloupe 
 ## 
-##       Alpha  Beta   Eta Gamma 
-##    39    39    50     6    88 
-##                    Beta        Beta 
-## 222.0000000  50.0000000   0.2252252 
-## [1] 26
-## 
-##       Alpha  Beta Delta   Eta Gamma 
-##    21     9    30     1     2    25 
-##                  Beta       Beta 
-## 88.0000000 30.0000000  0.3409091 
-## [1] 27
-## 
-##       Alpha  Beta 
-##    14     6     4 
-##                  Beta       Beta 
-## 24.0000000  4.0000000  0.1666667 
-## [1] 28
-## &lt; table of extent 0 &gt;
-## [1]  0 NA NA</code></pre>
-<pre class="r"><code>table(dat[which(dat$Collection.week &gt;= 21 &amp; i.E484K), &quot;VariantShort&quot;])</code></pre>
-<pre><code>## 
-##       Alpha  Beta Delta   Eta Gamma  Iota 
-##   198   147   251     1    68   151     1</code></pre>
-</div>
-</div>
+##     AY.11     AY.25     AY.26     AY.34      AY.4      AY.5      AY.6      AY.9 
+##         1         1         1        17       113        11         1        15 
+##   B.1.429 B.1.617.1 B.1.617.2   B.1.637 
+##         4         2       178         3</code></pre>
+<p><img src="figuresFrance_files/figure-html/unnamed-chunk-69-4.png" width="672" /></p>
 </div>
 
 
