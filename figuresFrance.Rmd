@@ -41,9 +41,10 @@ colsV2 <- brewer.pal(9, "Set3")
 colGISAID <- "#106b63"
 colECDC <- "#69b023"
 colSPF <- "#e30155"
+colGISAID2 <- "#2F4E8A"
 
-cols <- c(colGISAID, colECDC, colSPF, "#FE6100", "#785EF0")
-names(cols) <- c("GISAID", "TESSy", "Flash", "criblage", "option")
+cols <- c(colGISAID, colECDC, colSPF, "#FE6100", "#785EF0", colGISAID2)
+names(cols) <- c("GISAID", "TESSy", "Flash", "criblage", "option", "GISAID2")
 
 pchs <- c(16, 15, 2, 17, 1)
 names(pchs) <- c(names(cols)[1:3], "Flash2", "TESSyGISAID")
@@ -71,16 +72,30 @@ Note: Oversea territories are referenced as independent on GISAID
 
 Extracted data for Martinique and Guadeloupe as well (`grep Martinique` and `grep Guadeloupe`). 
 
+```
+grep "hCoV-19/France" metadata.tsv > ../../gisaidCovid_public/data/2021-11-10_France.tsv
+
+grep "Martinique" metadata.tsv > ../../gisaidCovid_public/data/2021-11-10_Martinique.tsv
+grep "Guadeloupe" metadata.tsv > ../../gisaidCovid_public/data/2021-11-10_Guadeloupe.tsv
+
+```
+
+UPDATE: run (private data/ folder)
+
+```
+./extractFrance.sh
+```
+
 ## Load data
 
 ```{r loadData, results = 'hide'}
-thedate <- "2021-10-18"
+thedate <- ""
 # Load France data
-dat <- read.csv(paste0("data/", thedate, "_France.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+dat <- read.csv(paste0("data/", thedate, "France.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
 
 # Load data DROM
-dat2 <- read.csv(paste0("data/", thedate, "_Martinique.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
-dat3 <- read.csv(paste0("data/", thedate, "_Guadeloupe.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+dat2 <- read.csv(paste0("data/", thedate, "Martinique.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+dat3 <- read.csv(paste0("data/", thedate, "Guadeloupe.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
 
 # Add column to distinguish metro from DROM
 dat$metropole <- TRUE
@@ -175,6 +190,7 @@ dat$Submission.date.wk <- format(as.Date(dat$Submission.date.YMD), "%W")
 
 dat$Collection.Ywk <- paste0(dat$Collection.date.Y, "-", dat$Collection.date.wk)
 dat$Submission.Ywk <- paste0(dat$Submission.date.Y, "-", dat$Submission.date.wk)
+
 
 sort(unique(dat$Collection.Ywk))
 
@@ -518,9 +534,9 @@ Pangolin version
 table(dat$Pangolin.version)
 ```
 
-# Submissions 
+# Submissions and metadata quality
 
-## By Platform
+## Submissions by Platform
 
 ```{r}
 tabFRsub <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subM = dat$Collection.date.YM), FUN = length)
@@ -610,6 +626,8 @@ heatmap(table(dat3$submitter, as.Date(dat3$Collection.date.YMD)), Rowv = NA, Col
 
 
 ### Focus IHU
+
+Specific histograms here because there have been date issues, and they can be easily detected by checking the consistency of lineage distributions over time
 
 ```{r}
 # All sequences
@@ -746,6 +764,56 @@ table(subIHU$Collection.date)
 
 ```
 
+
+## Delay between collection and submission 
+
+
+```{r}
+table(dat$Submission.Ywk, dat$Collection.Ywk)
+heatmap(table(dat$Collection.Ywk, dat$Submission.Ywk), Rowv = NA, Colv = NA, scale = "none", col = gray(seq(1, 0, by = -0.01)))
+
+range(dat$Collection.date.wk, na.rm = TRUE)
+
+# Convert week into numerical value
+asNumWk <- function(Ywk){
+  # Transfor Year-week into a single numerical value
+  year <- as.numeric(substr(Ywk, 1, 4)) # extract year
+  wk <- suppressWarnings(as.numeric(substr(Ywk, 6, 7))) # extract week number
+  maxwk <- as.numeric(substr(max(Ywk[!is.na(wk)]), 6, 7)) # maximum week of the latest year
+  wk[is.na(wk) & (year == 2020)] <- 53 # NA in 2020 as "53"
+  
+  
+  # Transform into numerical value
+  out <- wk + (year - 2020)*54
+  out[is.na(wk) & (year == 2021)] <- maxwk + 1  # NA in 2021 as last value
+  out <- out + 1
+  out
+}
+
+dat$Collection.numWk <- asNumWk(dat$Collection.Ywk)
+dat$Submission.numWk <- asNumWk(dat$Submission.Ywk)
+
+tb <- table(dat$Submission.numWk, dat$Collection.numWk)
+tb.df <- as.data.frame(tb)
+tb.df
+tb.df$prop <- as.numeric(as.character(tb.df[, 3])) / max(as.numeric(tb.df[, 3]))
+                         
+tb
+plot(as.numeric(tb.df[,1]), as.numeric(tb.df[, 2]), pch = 15, col = gray(1 - tb.df$prop))
+abline(a = 0, b = 1)
+
+as.numeric(tb.df[1, 1])
+as.numeric(as.character(tb.df[1, 1]))
+heatmap(tb)
+
+is.data.frame(tb)
+names(tb)
+head(tb)
+row.names(tb)
+col.names(tb)
+
+
+```
 
 
 # Lineages over time
@@ -1213,7 +1281,7 @@ table(dat$region, dat$submitter)
 ```
 
 
-# AA changes
+# AA changes -- Comparisons between sequencing and "criblage"
 
 Load screening data (criblage)
 
@@ -1233,6 +1301,9 @@ aa <- strsplit(tmp, ",")
 ```{r}
 # Extract information on whether the S:L452R is present as aa substitution in the sequence
 i.L452R <- sapply(aa, function(x){(is.element("Spike_L452R", x))})
+
+i.Delta <- (dat$VariantShort == "Delta")
+i.Delta[is.na(i.Delta)] <- FALSE
 ```
 
 Overall, fraction of all sequences with the L452R mutation: `r mean(i.L452R)`.
@@ -1248,6 +1319,22 @@ L452R.byweek <- merge(tmp.mean, tmp.n, by = "week")
 names(L452R.byweek) <- c("week", "p", "n")
 # Confidence interval for proportion
 L452R.byweek$deltaCI <- with(L452R.byweek, 1.96 * sqrt(p * (1-p)/n))
+
+
+# The same for Delta
+
+# Aggregate the data by week of collection
+# Proportion of sequences with L452R that week
+tmp.mean <- aggregate(i.Delta, by = list(week = dat$Collection.week), FUN = mean)
+# Number of sequences that week
+tmp.n <- aggregate(i.Delta, by = list(week = dat$Collection.week), FUN = length)
+# Merge and name
+Delta.byweek <- merge(tmp.mean, tmp.n, by = "week")
+names(Delta.byweek) <- c("week", "p", "n")
+# Confidence interval for proportion
+Delta.byweek$deltaCI <- with(Delta.byweek, 1.96 * sqrt(p * (1-p)/n))
+
+
 ```
 
 Which variants harbor the L452R mutation? 
@@ -1273,30 +1360,70 @@ Comparison of the frequency of L452R in GISAID vs criblage
 
 ```{r}
 
-par(las = 1, mar = c(4, 4, 3, 4), 
+mar1 <- c(4, 4, 3, 4)
+par(las = 1, mar = mar1, 
     mgp = c(2., 0.5, 0), tck = -0.02, 
-    xpd = FALSE)
+    xpd = FALSE, cex = 1, cex.axis = 0.8)
+
+layout(matrix(1:2, nrow = 2), heights = c(5, 1))
+cexx <- 1.
 plot(L452R.byweek$week, L452R.byweek$p, xlim = range(dat.France$week, na.rm = TRUE) + c(-1, 0), 
-     xlab = "Collection week", ylab = "Proportion L452R", ylim = c(0, 1), 
-     frame.plot = FALSE, yaxs = "i", col = cols["GISAID"], pch = 16, main = "L452R")
+     xlab = "Semaine de collecte", ylab = "Proportion Delta ou L452R", ylim = c(0, 1), 
+     frame.plot = FALSE, yaxs = "i", col = cols["GISAID"], pch = 16, main = "Proportion de Delta et identification de L452R, 
+séquençage et criblage", 
+cex = cexx)
 axis(4)
 
 for(i in seq(0, 1, by = 0.1)) abline(h = i, col = gray(0.9))
 
+lgt <- 0.05 # length of the arrows
+
 arrows(x0 = L452R.byweek$week, y0 = L452R.byweek$p + L452R.byweek$deltaCI, 
        x1 = L452R.byweek$week, y1 = L452R.byweek$p - L452R.byweek$deltaCI, 
-       code = 3, angle = 90, length = 0.1, col = cols["GISAID"])
+       code = 3, angle = 90, length = lgt, col = cols["GISAID"])
 
-points(dat.France$week, dat.France$tx_C1/100, col = cols["criblage"], pch = 18)
+# GISAID Delta
+points(Delta.byweek$week, Delta.byweek$p, 
+       col = cols["GISAID2"], pch = 17)
+
+arrows(x0 = Delta.byweek$week, y0 = Delta.byweek$p + Delta.byweek$deltaCI, 
+       x1 = Delta.byweek$week, y1 = Delta.byweek$p - Delta.byweek$deltaCI, 
+       code = 3, angle = 90, length = lgt, col = cols["GISAID2"], cex = cexx)
+
+
+# Criblage
+points(dat.France$week, dat.France$tx_C1/100, col = cols["criblage"], pch = 15, cex = cexx)
 
 arrows(x0 = dat.France$week, y0 = dat.France$tx_C1/100 + dat.France$deltaCI_C1, 
        x1 = dat.France$week, y1 = dat.France$tx_C1/100 - dat.France$deltaCI_C1, 
-       code = 3, angle = 90, length = 0.1, col = cols["criblage"])
+       code = 3, angle = 90, length = lgt, col = cols["criblage"])
 
-legend("topleft", col = cols[c("GISAID", "criblage")], legend = c("in GISAID", "Criblage"), pch = c(16, 18), bty = "n")
+legend("bottomright", col = cols[c("GISAID2", "GISAID",  "criblage")], legend = c("Delta dans les séquences GISAID", "L452R dans les séquences GISAID", "L452R dans le criblage"), pch = c(17, 16, 15), bty = "n")
 
 par(xpd = TRUE)
-text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
+#text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
+
+par(mar = c(0, mar1[2], 0, mar1[4]))
+
+plot(L452R.byweek$week, -L452R.byweek$n, axes = FALSE, type = "h", ylab = "Nb de séqs", xlab = "")
+vals <- pretty(seq(0, max(L452R.byweek$n), by = 2000))
+axis(2, at = -vals, labels = vals, lwd = 0, lwd.ticks = 1)
+axis(4, at = -vals, labels = vals, lwd = 0, lwd.ticks = 1)
+#mtext(side = 3, text = "Nombre de séquences")
+```
+
+```{r}
+tmp <- dat[which(i.Delta), ]
+
+tb <- table(tmp$Submission.week, tmp$Collection.week)
+
+tb[1, ]
+
+heatmap(table(tmp$Collection.week, tmp$Submission.week), Rowv = NA, Colv = NA, scale = "none", col = gray(seq(1, 0, by = -0.01)))
+
+
+
+plot(dat.France[which(i.Delta), "Collection.week"])
 ```
 
 
@@ -1310,6 +1437,7 @@ table(tmp25$region)
 
 tmp24 <- dat[which(i.L452R & dat$Collection.week == 24), ]
 table(tmp24$region)
+
 ```
 
 ## E484K
@@ -1394,6 +1522,23 @@ for(cw in 22:28){
 table(dat[which(dat$Collection.week >= 21 & i.E484K), "VariantShort"])
 
 ```
+
+## F490R
+
+```{r}
+# Extract information on whether the S:F490R is present as aa substitution in the sequence
+i.F490R <- sapply(aa, function(x){(is.element("Spike_F490R", x))})
+```
+
+
+```{r}
+sum(i.F490R)
+
+indicesF490R <- which(i.F490R)
+
+dat[indicesF490R, ]
+```
+
 
 # DROM
 
