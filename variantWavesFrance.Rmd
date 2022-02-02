@@ -1,0 +1,314 @@
+---
+title: "Variant waves in France, TESSy"
+author: "FD"
+output:
+  html_document: 
+      code_folding: hide
+      toc: TRUE
+      toc_float: TRUE
+      self_contained: no 
+---
+
+<!--
+Header for html output
+  html_document: 
+      code_folding: hide
+      toc: TRUE
+      toc_float: TRUE
+      self_contained: no 
+-->
+
+Document compiled on `r Sys.Date()`.
+
+# Initializations
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, eval = FALSE, include = FALSE}
+# This is only for evaluation in the console, not for Rmd
+rm(list = ls()) 
+options(warn = 2) # Turn warnings into errors to trouble-check
+```
+
+```{r}
+# Package for multinom fit
+library(nnet) 
+
+# Colors
+library("MetBrewer")
+
+```
+
+```{r}
+dlData <- FALSE
+```
+
+# Load data
+
+```{r}
+# Load TESSy data
+source("TESSy.R")
+
+head(dat.gisaid.FR)
+head(dat.tessy.FR)
+```
+
+
+```{r cleanDates}
+plot(dat.tessy.FR$week)
+plot(dat.gisaid.FR$week)
+range(dat.tessy.FR$week)
+range(dat.gisaid.FR$week)
+
+dat.gisaid.FR$year_week2 <- dat.gisaid.FR$year_week
+dat.gisaid.FR[dat.gisaid.FR$year_week2 == "2020-53", "year_week2"] <- "2021-00"
+
+dat.tessy.FR$date1 <- as.Date(paste0(dat.tessy.FR$year_week, "-1"), "%Y-%W-%w")
+dat.gisaid.FR$date1 <- as.Date(paste0(dat.gisaid.FR$year_week2, "-1"), "%Y-%W-%w")
+
+# Check dates
+
+plot(dat.gisaid.FR$date1)
+# There is a date problem in 2020 but for the moment I decide not to care because
+# - it is one week in 2020
+# - there are almost not VOCs in 2020
+
+# https://www.epochconverter.com/weeks/2021
+dat.gisaid.FR[dat.gisaid.FR$year_week == "2020-53", "date1"]
+# Supposed to be 28-Dec
+dat.gisaid.FR[dat.gisaid.FR$year_week == "2021-01", "date1"]
+# OK, 4-Jan
+dat.gisaid.FR[dat.gisaid.FR$year_week == "2020-52", "date1"]
+# Supposed to be 21-Dec
+
+plot(dat.tessy.FR$date1)
+```
+
+```{r cleanVariants}
+unique(dat.gisaid.FR$variant)
+
+
+vars <- c("AT.1", 
+          "AY.4.2", 
+          "B.1.1.529", 
+          "B.1.1.7", 
+          "B.1.1.7+E484K", 
+          "B.1.351", 
+          "B.1.427/B.1.429", 
+          "B.1.525", 
+          "B.1.526",
+          "B.1.616", 
+          "B.1.617", 
+          "B.1.617.1", 
+          "B.1.617.2", 
+          "B.1.617.3", 
+          "B.1.620", 
+          "B.1.621", 
+          "B.1.640", 
+          "C.1.2", 
+          "C.37", 
+          "P.1", 
+          "P.3", 
+          "UNK", 
+          "Other")
+
+OMS <- c("Other", 
+          "Delta", 
+          "Omicron", 
+          "Alpha", 
+          "Alpha", 
+          "Beta", 
+          "Epsilon", 
+          "Eta", 
+          "Iota",
+          "Other", 
+          "Other", # B.1.617
+          "Kappa", 
+          "Delta", 
+          "Other", 
+          "Other", 
+          "Mu", 
+          "B.1.640", 
+          "C.1.2", 
+          "Lambda", 
+          "Gamma", 
+          "Theta", 
+          "UNK", 
+          "Other")
+
+dic.OMS <- OMS
+names(dic.OMS) <- vars
+dic.OMS
+
+
+dat.gisaid.FR$varOMS <- dic.OMS[dat.gisaid.FR$variant]
+unique(dat.gisaid.FR$varOMS)
+
+head(dat.gisaid.FR)
+
+unique(OMS)
+
+dic.VOCs <- c("Other", 
+          "Delta", 
+          "Omicron", 
+          "Alpha", 
+          "Alpha", 
+          "Beta", 
+          "Other", 
+          "Other", 
+          "Other",
+          "Other", 
+          "Other", # B.1.617
+          "Other", 
+          "Delta", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Gamma", 
+          "Other", 
+          "UNK", 
+          "Other")
+names(dic.VOCs) <- vars
+dic.VOCs
+
+dat.gisaid.FR$VOC <- dic.VOCs[dat.gisaid.FR$variant]  
+unique(dat.gisaid.FR$VOC)
+```
+
+# Analyse
+
+```{r}
+# Aggregate data by VOC for each date
+aggVOC <- aggregate(dat.gisaid.FR$number_detections_variant, by = list(date1 = dat.gisaid.FR$date1, VOC = dat.gisaid.FR$VOC), FUN = sum)
+
+# Check data format
+# Make sure that all variants are listed at all dates
+checkFormat <- aggregate(aggVOC$x, by = list(VOC = aggVOC$VOC), FUN = length)
+stopifnot(all(checkFormat$x == checkFormat$x[1]))
+
+#"Other"   "Delta"   "Omicron" "Alpha"   "Beta"    "Gamma"   "UNK"  
+
+# Create matrix for multinom fit
+mat <- data.frame("Alpha" = aggVOC[aggVOC$VOC == "Alpha", "x"])
+mat
+
+VOCs <- sort(unique(aggVOC$VOC))
+VOCs[3] <- "Gamma"
+VOCs[4] <- "Delta"
+# Because alphabetical order different
+
+for(voc in VOCs[-1]){
+  mat[, voc] <- aggVOC[aggVOC$VOC == voc, "x"]
+}
+mat <- as.matrix(mat)
+
+time <- aggVOC[aggVOC$VOC == "Alpha", "date1"]
+
+timeSinceFirstDay <- as.numeric(time - min(time))
+
+
+## Null model
+m0 <- multinom(mat ~ 1)
+summary(m0)
+
+m1 <- multinom(mat ~ timeSinceFirstDay)
+summary(m1)
+
+minDate <- as.Date("2020-03-03")
+dates <- seq(minDate, max(aggVOC$date1), by = "day")
+dates2 <- seq(as.numeric(minDate - min(time)), max(timeSinceFirstDay), by = 1)
+
+dates <- as.data.frame(dates)
+names(dates) <- "date1"
+pred <- data.frame(timeSinceFirstDate = dates2, date = dates, predict(m1, newdata = data.frame(timeSinceFirstDay = dates2), type = "prob"))
+
+# Check output
+head(pred)
+
+apply(pred[, 3:ncol(pred)], 1, sum)
+```
+
+# Plot
+
+```{r defineColors}
+pal <- met.brewer("Redon", 10, "discrete")
+pal
+rbind(1:10, pal[1:10])
+
+colAlpha <- pal[2]
+colBeta <- pal[10]
+colGamma <- pal[9]
+colDelta <- pal[1]
+colOmicron <- pal[6]
+colOther <- gray(0.4)
+colUNK <- gray(0.8)
+```
+
+```{r plotProps, fig.width=8, fig.height=4.5}
+
+# Initialize plot
+par(las = 1)
+xx <- as.Date(pred$date1)
+
+
+par(mar = c(4, 2, 2, 5), mgp = c(2.5, 0.5, 0), tck = - 0.02)
+plot(xx, 
+     rep(0, nrow(pred)),
+     type = "n", 
+     ylim = c(0, 1), 
+     xlab = "", 
+     ylab = "", 
+     frame.plot = FALSE, axes = FALSE)
+
+
+xl <- seq(as.Date("2020-03-01"), Sys.Date(), by = "month")
+axis(1, at = xl, labels = format(xl, "%b"), 
+     lwd = 0, lwd.ticks = 1, pos = 0)
+axis(1, at = as.Date(c("2020-07-01", "2021-07-01", "2022-02-01")), labels = seq(2020, 2022), pos = -0.05, lwd = 0)
+
+axis(2, pos = minDate, lwd = 0, lwd.ticks = 1)
+
+jvals <- 3:9
+
+for(j in jvals){
+  if(j == 3){
+    y1 <- rep(0, nrow(pred))
+    y2 <- pred[, 3]
+  }else{
+    y2 <- apply(pred[, 3:j], 1, sum) 
+  }
+  if(j == 4){
+    y1 <- pred[, 3]
+  }
+  if(j > 4){
+    y1 <- apply(pred[, 3:(j-1)], 1, sum)
+  }
+  
+  
+  print(paste0("col", names(pred)[j]))
+  print(get(paste0("col", names(pred)[j])))
+  polygon(c(xx, rev(xx), xx[1]), c(y1, rev(y2), y1[1]), 
+          col = get(paste0("col", names(pred)[j])), 
+          border = NULL)
+  
+}
+
+par(xpd = TRUE)
+
+legend("right", inset=c(-0.15,0), 
+       legend = rev(paste0(names(pred)[jvals])), 
+       pch = 15, 
+       col = rev(vapply(jvals, function(j) get(paste0("col", names(pred)[j])), FUN.VALUE = "x")), pt.cex = 2, bty = "n")
+
+mtext("Data: GISAID via ECDC, https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv
+      Code")
+
+```
+
+
+ 
