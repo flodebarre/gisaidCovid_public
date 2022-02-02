@@ -37,15 +37,20 @@ options(warn = 2) # Turn warnings into errors to trouble-check
 library(nnet) 
 
 # Colors
-library("MetBrewer")
+# library("MetBrewer")
 
+# Source sliding window function
+source("../covid_indicateurs/usefulFunctions.R")
+# Also available here: https://github.com/flodebarre/covid_indicateurs/blob/main/usefulFunctions.R
 ```
 
 ```{r}
 dlData <- FALSE
 ```
 
-# Load data
+# Load and clean data
+
+## Variant data
 
 ```{r}
 # Load TESSy data
@@ -135,7 +140,7 @@ OMS <- c("Other",
           "Lambda", 
           "Gamma", 
           "Theta", 
-          "UNK", 
+          "Unknown", 
           "Other")
 
 dic.OMS <- OMS
@@ -171,13 +176,51 @@ dic.VOCs <- c("Other",
           "Other", 
           "Gamma", 
           "Other", 
-          "UNK", 
+          "Unknown", 
           "Other")
 names(dic.VOCs) <- vars
 dic.VOCs
 
 dat.gisaid.FR$VOC <- dic.VOCs[dat.gisaid.FR$variant]  
 unique(dat.gisaid.FR$VOC)
+```
+
+
+## Epidemiological data
+
+Source: <https://www.data.gouv.fr/fr/datasets/donnees-relatives-aux-resultats-des-tests-virologiques-covid-19/#>, `sp-pos-quot-fra-xxx.csv`
+
+```{r}
+URL <- "https://www.data.gouv.fr/fr/datasets/r/dd0de5d9-b5a5-4503-930a-7b08dc0adc7c"
+
+dataFile <- paste0("data/FranceCas.csv") # name file with today's date
+if(dlData){
+  download.file(URL, dataFile) # download file
+}
+
+dat.France <- read.csv(dataFile, sep = ";", stringsAsFactors = FALSE)
+head(dat.France)
+
+dat.France$date <- as.Date(dat.France$jour)
+
+# Remove age classes
+dat.France <- dat.France[which(dat.France$cl_age90 == 0), ]
+
+
+dat.France$P7j <- sliding.window(dat.France$P)
+
+inona <- 4:(nrow(dat.France)-3)
+
+# Smooth data
+# spar parameter controls the level of smoothing
+tmp <- smooth.spline(as.numeric(as.Date(dat.France[inona, ]$jour) - as.Date(min(dat.France$jour))), dat.France[inona,]$P7j, 
+                     spar = 0.2)
+
+# Check
+plot(tmp)
+
+dat.France$Psmoothed <- c(rep(NA, 3), tmp$y, rep(NA, 3))
+
 ```
 
 # Analyse
@@ -216,10 +259,15 @@ timeSinceFirstDay <- as.numeric(time - min(time))
 m0 <- multinom(mat ~ 1)
 summary(m0)
 
-m1 <- multinom(mat ~ timeSinceFirstDay)
+# Add weights to make sure that initial values remain as in the data
+# (otherwise fit says large proportion still in Nov, problem)
+# Note: would need to go check in GISAID directly to add the missing weeks
+weights <- c(rep(10000, 3), rep(1, nrow(mat) - 3))
+m1 <- multinom(mat ~ timeSinceFirstDay, 
+               weights = weights)
 summary(m1)
 
-minDate <- as.Date("2020-03-03")
+minDate <- min(dat.France$date)
 dates <- seq(minDate, max(aggVOC$date1), by = "day")
 dates2 <- seq(as.numeric(minDate - min(time)), max(timeSinceFirstDay), by = 1)
 
@@ -229,34 +277,64 @@ pred <- data.frame(timeSinceFirstDate = dates2, date = dates, predict(m1, newdat
 
 # Check output
 head(pred)
+all(apply(pred[, 3:ncol(pred)], 1, sum) > 0.999)
 
-apply(pred[, 3:ncol(pred)], 1, sum)
+pred0 <- pred
+
+
+## This was necessary before the weights, 
+## now not necessary, but kept for legacy
+# ## Set all VOCs to 0 before key date
+# zeroDate <- as.Date("2020-12-15")
+# ii <- which(pred$date1 < zeroDate)
+# theVOCs <- c("Alpha", "Beta", "Gamma", "Delta", "Omicron")
+# 
+# z <- apply(pred[ii, theVOCs], 1, sum)
+# z
+# fac <- 0.1
+# pred[ii, theVOCs] <- fac*pred[ii, theVOCs]
+# pred[ii, "Other"] <- pred[ii, "Other"] + (1-fac)*z
+
+# Merge with case data
+predCase <- merge(pred, dat.France, by.x = "date1", by.y = "date")
+
+head(predCase)
+
+# pred <- pred0
 ```
 
 # Plot
 
 ```{r defineColors}
-pal <- met.brewer("Redon", 10, "discrete")
-pal
-rbind(1:10, pal[1:10])
+# pal <- met.brewer("Redon", 10, "discrete")
+# rbind(1:10, pal[1:10])
 
-colAlpha <- pal[2]
-colBeta <- pal[10]
-colGamma <- pal[9]
-colDelta <- pal[1]
-colOmicron <- pal[6]
+# colAlpha <- pal[2]
+# colBeta <- pal[10]
+# colGamma <- pal[9]
+# colDelta <- pal[1]
+# colOmicron <- pal[6]
 colOther <- gray(0.4)
-colUNK <- gray(0.8)
+colUnknown <- gray(0.8)
+
+colAlpha <- "#1f1dff"
+colBeta <- "#6322b9"
+colGamma <- "#4760e9"
+colDelta <- "#66babf"
+colOmicron <- "#f55c30"
+
+
 ```
+
+## Proportions
 
 ```{r plotProps, fig.width=8, fig.height=4.5}
 
 # Initialize plot
 par(las = 1)
-xx <- as.Date(pred$date1)
-
-
 par(mar = c(4, 2, 2, 5), mgp = c(2.5, 0.5, 0), tck = - 0.02)
+
+xx <- as.Date(pred$date1)
 plot(xx, 
      rep(0, nrow(pred)),
      type = "n", 
@@ -265,16 +343,17 @@ plot(xx,
      ylab = "", 
      frame.plot = FALSE, axes = FALSE)
 
-
-xl <- seq(as.Date("2020-03-01"), Sys.Date(), by = "month")
+# Axes
+xl <- seq(minDate, Sys.Date(), by = "month")
 axis(1, at = xl, labels = format(xl, "%b"), 
      lwd = 0, lwd.ticks = 1, pos = 0)
-axis(1, at = as.Date(c("2020-07-01", "2021-07-01", "2022-02-01")), labels = seq(2020, 2022), pos = -0.05, lwd = 0)
+axis(1, at = as.Date(c("2020-07-01", "2021-07-01", "2022-02-01")), labels = seq(2020, 2022), line = 0, lwd = 0)
 
 axis(2, pos = minDate, lwd = 0, lwd.ticks = 1)
 
-jvals <- 3:9
 
+# Plot each variant
+jvals <- 3:9
 for(j in jvals){
   if(j == 3){
     y1 <- rep(0, nrow(pred))
@@ -295,20 +374,89 @@ for(j in jvals){
   polygon(c(xx, rev(xx), xx[1]), c(y1, rev(y2), y1[1]), 
           col = get(paste0("col", names(pred)[j])), 
           border = NULL)
-  
 }
 
+# Legend
 par(xpd = TRUE)
-
 legend("right", inset=c(-0.15,0), 
        legend = rev(paste0(names(pred)[jvals])), 
        pch = 15, 
        col = rev(vapply(jvals, function(j) get(paste0("col", names(pred)[j])), FUN.VALUE = "x")), pt.cex = 2, bty = "n")
 
-mtext("Data: GISAID via ECDC, https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv
-      Code")
+title(main = "SARS-CoV-2 variants in France")
 
+# Credits
+mtext(paste0("@flodebarre, after @firefoxx66, ", Sys.Date(), "
+Data: GISAID via ECDC, https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv
+Code: https://github.com/flodebarre/gisaidCovid_public/blob/main/variantWavesFrance.Rmd"), family = "mono", cex = 0.5, side = 1, line = 2.5, col = gray(0.3), adj = 0)
 ```
 
+## Abundances
+
+```{r plotAbundances, fig.width=8, fig.height=8}
+
+# Initialize plot
+par(las = 1)
+par(mar = c(4, 2, 2, 5), mgp = c(2.5, 0.5, 0), tck = - 0.01)
+
+xx <- as.Date(predCase$date1)
+plot(xx, 
+     rep(0, nrow(predCase)),
+     type = "n", 
+     ylim = c(0, max(predCase$Psmoothed, na.rm = TRUE)), 
+     xlab = "", 
+     ylab = "", 
+     frame.plot = FALSE, axes = FALSE)
+
+# Axes
+xl <- seq(minDate, Sys.Date(), by = "month")
+axis(1, at = xl, labels = format(xl, "%b"), 
+     lwd = 0, lwd.ticks = 1, pos = 0)
+axis(1, at = as.Date(c("2020-07-01", "2021-07-01", "2022-02-01")), labels = seq(2020, 2022), line = 0, lwd = 0)
+
+axis(2, pos = minDate, lwd = 0, lwd.ticks = 1)
+
+
+# Plot each variant
+jvals <- 3:9
+for(j in jvals){
+  if(j == 3){
+    y1 <- rep(0, nrow(predCase))
+    y2 <- predCase[, 3]
+  }else{
+    y2 <- apply(predCase[, 3:j], 1, sum) 
+  }
+  if(j == 4){
+    y1 <- predCase[, 3]
+  }
+  if(j > 4){
+    y1 <- apply(predCase[, 3:(j-1)], 1, sum)
+  }
+  
+  
+  print(paste0("col", names(predCase)[j]))
+  print(get(paste0("col", names(predCase)[j])))
+  
+  polygon(c(xx, rev(xx), xx[1]), c(y1 * predCase$Psmoothed, rev(y2 * predCase$Psmoothed), y1[1] * predCase$Psmoothed[1]), 
+          col = get(paste0("col", names(predCase)[j])), 
+          border = NULL)
+  
+   #readline(prompt="Press [enter] to continue")
+}
+
+# Legend
+par(xpd = TRUE)
+legend("right", inset=c(-0.125,0), 
+       legend = rev(paste0(names(predCase)[jvals])), 
+       pch = 15, 
+       col = rev(vapply(jvals, function(j) get(paste0("col", names(predCase)[j])), FUN.VALUE = "x")), pt.cex = 2, bty = "n",)
+
+title(main = "SARS-CoV-2 variants in France")
+
+# Credits
+mtext(paste0("@flodebarre, after @TWenseleers, ", Sys.Date(), "
+Data: GISAID via ECDC, https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv
+Code: https://github.com/flodebarre/gisaidCovid_public/blob/main/variantWavesFrance.Rmd"), family = "mono", cex = 0.5, side = 1, line = 2.5, col = gray(0.3), adj = 0)
+```
 
  
