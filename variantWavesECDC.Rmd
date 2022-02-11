@@ -1,0 +1,598 @@
+---
+title: "Variant waves in Europe, ECDC data"
+author: "FD"
+output:
+  html_document: 
+      code_folding: hide
+      toc: TRUE
+      toc_float: TRUE
+      self_contained: no 
+---
+
+<!--
+Header for html output
+  html_document: 
+      code_folding: hide
+      toc: TRUE
+      toc_float: TRUE
+      self_contained: no 
+-->
+
+Document compiled on `r Sys.Date()`.
+
+# Initializations
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, eval = FALSE, include = FALSE}
+# This is only for evaluation in the console, not for Rmd
+rm(list = ls()) 
+options(warn = 2) # Turn warnings into errors to trouble-check
+```
+
+```{r}
+# Package for multinom fit
+library(nnet) 
+
+# Colors
+# library("MetBrewer")
+
+# Source sliding window function
+source("../covid_indicateurs/usefulFunctions.R")
+# Also available here: https://github.com/flodebarre/covid_indicateurs/blob/main/usefulFunctions.R
+```
+
+```{r}
+dlData <- FALSE
+```
+
+## Plot settings
+
+
+```{r defineColors}
+# pal <- met.brewer("Redon", 10, "discrete")
+# rbind(1:10, pal[1:10])
+
+# colAlpha <- pal[2]
+# colBeta <- pal[10]
+# colGamma <- pal[9]
+# colDelta <- pal[1]
+# colOmicron <- pal[6]
+colOther <- gray(0.4)
+colUnknown <- gray(0.8)
+
+colAlpha <- "#1f1dff"
+colBeta <- "#6322b9"
+colGamma <- "#4760e9"
+colDelta <- "#66babf"
+colOmicron <- "#f55c30"
+```
+
+
+# Load and clean data
+
+## Variant data
+
+Source <https://www.ecdc.europa.eu/en/publications-data/data-virus-variants-covid-19-eueea>
+
+```{r loadVariantData}
+
+# Load data
+
+# Download data
+URL <- "https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv"
+if(dlData){
+  download.file(URL, 
+              destfile="data_public/tessy.csv",
+              method="curl",
+              extra='-L')
+  # Save update
+  system("git add data_public/tessy.csv; git commit -m 'update tessy data'")
+}
+
+# Load data
+dat.tessy.all <- read.csv("data_public/tessy.csv", sep = ",", stringsAsFactors = FALSE)
+
+
+## Clean data
+# Get first day of the week
+dat.tessy.all$year_week2 <- dat.tessy.all$year_week
+dat.tessy.all[dat.tessy.all$year_week == "2020-53", "year_week2"] <- "2021-00"
+dat.tessy.all$date1 <- as.Date(paste0(dat.tessy.all$year_week2, "-1"), "%Y-%W-%w")
+# Note: I am not sure about the date format used in the data. There is an error for 2020-53, which I why I am changing it to 2021-00. This is not ideal, but this is just one week so for the moment, we are juste noting the issue, and we'll see later who to fix it. 
+# - it is one week in 2020
+# - there are almost not VOCs in 2020
+
+# https://www.epochconverter.com/weeks/2021
+unique(dat.tessy.all[dat.tessy.all$year_week == "2020-53", "date1"])
+# Supposed to be 28-Dec
+unique(dat.tessy.all[dat.tessy.all$year_week == "2021-01", "date1"])
+# OK, 4-Jan
+unique(dat.tessy.all[dat.tessy.all$year_week == "2020-52", "date1"])
+# Supposed to be 21-Dec
+
+dat.gisaid <- dat.tessy.all[dat.tessy.all$source == "GISAID", ]
+dat.tessy <- dat.tessy.all[dat.tessy.all$source == "TESSy", ]
+```
+
+
+```{r cleanVariants}
+
+## GISAID 
+
+variants.gisaid <- unique(dat.gisaid$variant)
+
+# vars is the unique variant names
+# This may have to be updated
+vars <- c("AT.1", 
+          "AY.4.2", 
+          "B.1.1.529", 
+          "B.1.1.7", 
+          "B.1.1.7+E484K", 
+          "B.1.351", 
+          "B.1.427/B.1.429", 
+          "B.1.525", 
+          "B.1.526",
+          "B.1.616", 
+          "B.1.617", 
+          "B.1.617.1", 
+          "B.1.617.2", 
+          "B.1.617.3", 
+          "B.1.620", 
+          "B.1.621", 
+          "B.1.640", 
+          "C.1.2", 
+          "C.37", 
+          "P.1", 
+          "P.3", 
+          "UNK", 
+          "Other")
+
+stopifnot(all(vars == variants.gisaid))
+
+# Convert into OMS names
+OMS <- c("Other", 
+          "Delta", 
+          "Omicron", 
+          "Alpha", 
+          "Alpha", 
+          "Beta", 
+          "Epsilon", 
+          "Eta", 
+          "Iota",
+          "Other", 
+          "Other", # B.1.617
+          "Kappa", 
+          "Delta", 
+          "Other", 
+          "Other", 
+          "Mu", 
+          "B.1.640", 
+          "C.1.2", 
+          "Lambda", 
+          "Gamma", 
+          "Theta", 
+          "Unknown", 
+          "Other")
+
+# Turn into dictionnary
+dic.OMS <- OMS
+names(dic.OMS) <- vars
+dic.OMS
+
+# Rename variants
+dat.gisaid$varOMS <- dic.OMS[dat.gisaid$variant]
+
+## TESSy
+
+variants.tessy <- unique(dat.tessy$variant)
+
+# Check that they are included
+cbind(variants.tessy, is.element(variants.tessy, variants.gisaid))
+
+# One difference: SGTF
+# dat.tessy[dat.tessy$variant == "SGTF", ]
+
+
+# More coarse description with just the VOCs and not all variants
+dic.VOCs <- c("Other", 
+          "Delta", 
+          "Omicron", 
+          "Alpha", 
+          "Alpha", 
+          "Beta", 
+          "Other", 
+          "Other", 
+          "Other",
+          "Other", 
+          "Other", # B.1.617
+          "Other", 
+          "Delta", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Other", 
+          "Gamma", 
+          "Other", 
+          "Unknown", 
+          "Other")
+names(dic.VOCs) <- vars
+dic.VOCs
+
+dat.gisaid$VOC <- dic.VOCs[dat.gisaid$variant]  
+unique(dat.gisaid$VOC)
+
+# Clean aberrant data
+dat.gisaid[is.element(dat.gisaid$VOC, c("Omicron", "Delta")) & dat.gisaid$date1 < "2021-02-01", "number_detections_variant"] <- 0
+```
+
+
+## Epidemiological data, ECDC
+
+source <https://www.ecdc.europa.eu/en/publications-data/data-daily-new-cases-covid-19-eueea-country>
+
+```{r}
+URL <- "https://opendata.ecdc.europa.eu/covid19/nationalcasedeath_eueea_daily_ei/csv/data.csv"
+
+dataFile <- paste0("data_public/ECDC_Cas.csv") # name file with today's date
+if(dlData){
+  download.file(URL, dataFile) # download file
+  system("git add data_public/ECDC_Cas.csv; git commit -m 'update ecdc case data'")
+}
+
+cas.ECDC <- read.csv(dataFile, na.strings = "", fileEncoding = "UTF-8-BOM") # As suggested on the ECDC webpage
+
+head(cas.ECDC)
+
+# Format data
+# Date
+cas.ECDC$date <- as.Date(cas.ECDC$dateRep, format = "%d/%m/%Y")
+#data.frame(cas.ECDC$date, cas.ECDC$dateRep) # Check
+
+head(cas.ECDC)
+
+# Ignore corrections
+cas.ECDC[which(cas.ECDC$cases < 0), "cases"] <- NA
+```
+
+
+```{r, eval = FALSE}
+# Checks with French data
+
+cas.ECDC.FR <- cas.ECDC[which(cas.ECDC$countriesAndTerritories == "France"), ]
+# Sort by date
+cas.ECDC.FR <- cas.ECDC.FR[order(cas.ECDC.FR$date), ]
+# Check that dates are consecutive
+stopifnot(all(abs(diff(cas.ECDC.FR$date)) == 1))
+
+cas.ECDC.FR$cases.7J <- sliding.window(cas.ECDC.FR$cases)
+cas.ECDC.FR$cases.sum7J <- 7 * cas.ECDC.FR$cases.7J
+
+par(lwd = 1)
+plot(cas.ECDC.FR$date, cas.ECDC.FR$cases)
+
+dat.gisaid.FR <- dat.gisaid[which(dat.gisaid$country == "France"), ]
+# Check consistency between the datasets
+plot(dat.gisaid.FR$date1, dat.gisaid.FR$new_cases)
+points(cas.ECDC.FR$date, cas.ECDC.FR$cases.sum7J, col = 2, type = "l")
+
+# Smoothen the data
+inona <- 4:(nrow(cas.ECDC.FR)-3)
+
+# spar parameter controls the level of smoothing
+tmp <- smooth.spline(as.numeric(as.Date(cas.ECDC.FR[inona, ]$date) - as.Date(min(cas.ECDC.FR$date))), cas.ECDC.FR[inona,]$cases.7J, 
+                     spar = 0.2)
+
+cas.ECDC.FR$Psmoothed <- c(rep(NA, 3), tmp$y, rep(NA, 3))
+
+lines(cas.ECDC.FR$date, 7*cas.ECDC.FR$Psmoothed, col = 3)
+
+```
+
+# Analyse
+
+```{r, eval = FALSE}
+# Aggregate data by VOC for each date
+aggVOC <- aggregate(dat.gisaid.FR$number_detections_variant, by = list(date1 = dat.gisaid.FR$date1, VOC = dat.gisaid.FR$VOC), FUN = sum)
+
+# Sample sizes
+aggSam <- aggregate(aggVOC$x, by = list(date1 = aggVOC$date1), FUN = sum)
+names(aggSam)[2] <- "tot"
+
+aggVOC <- merge(aggVOC, aggSam, by = "date1")
+
+aggVOC$prop <- aggVOC$x / aggVOC$tot
+
+# Add case data (ECDC)
+tmp <- merge(aggVOC, cas.ECDC.FR, by.x = "date1", by.y = "date")
+tmp$cases.sum7J <- 7 * tmp$cases7J
+aggVOC <- tmp
+
+#--------------------------
+# Version without Unknown
+aggVOC2 <- aggVOC[which(aggVOC$VOC != "Unknown"), c("date1", "VOC", "x")]
+tmp <- aggregate(aggVOC2$x, by = list(date1 = aggVOC2$date1), FUN = sum)
+names(tmp)[2] <- "tot"
+aggVOC2 <- merge(aggVOC2, tmp, by = "date1")
+aggVOC2$p <- aggVOC2$x / aggVOC2$tot
+
+# Add case data (ECDC)
+tmp <- merge(aggVOC2, cas.ECDC.FR, by.x = "date1", by.y = "date")
+tmp$cases.sum7J <- 7 * tmp$cases7J
+aggVOC2 <- tmp
+
+
+# Check data format
+# Make sure that all variants are listed at all dates
+checkFormat <- aggregate(aggVOC$x, by = list(VOC = aggVOC$VOC), FUN = length)
+stopifnot(all(checkFormat$x == checkFormat$x[1]))
+
+#"Other"   "Delta"   "Omicron" "Alpha"   "Beta"    "Gamma"   "UNK"  
+
+# Create matrix for multinom fit
+mat <- data.frame("Alpha" = aggVOC[aggVOC$VOC == "Alpha", "x"])
+mat
+
+VOCs <- sort(unique(aggVOC$VOC))
+VOCs[3] <- "Gamma"
+VOCs[4] <- "Delta"
+# Because alphabetical order different
+
+for(voc in VOCs[-1]){
+  mat[, voc] <- aggVOC[aggVOC$VOC == voc, "x"]
+}
+mat <- as.matrix(mat)
+
+time <- aggVOC[aggVOC$VOC == "Alpha", "date1"]
+
+timeSinceFirstDay <- as.numeric(time - min(time))
+
+
+## Null model
+m0 <- multinom(mat ~ 1)
+summary(m0)
+
+# Add weights to make sure that initial values remain as in the data
+# (otherwise fit says large proportion still in Nov, problem)
+# Note: would need to go check in GISAID directly to add the missing weeks
+weights <- c(rep(10000, 3), rep(1, nrow(mat) - 3))
+m1 <- multinom(mat ~ timeSinceFirstDay, 
+               weights = weights)
+summary(m1)
+
+minDate <- min(dat.France$date)
+dates <- seq(minDate, max(aggVOC$date1), by = "day")
+dates2 <- seq(as.numeric(minDate - min(time)), max(timeSinceFirstDay), by = 1)
+
+dates <- as.data.frame(dates)
+names(dates) <- "date1"
+pred <- data.frame(timeSinceFirstDate = dates2, date = dates, predict(m1, newdata = data.frame(timeSinceFirstDay = dates2), type = "prob"))
+
+# Check output
+head(pred)
+all(apply(pred[, 3:ncol(pred)], 1, sum) > 0.999)
+
+pred0 <- pred
+
+
+## This was necessary before the weights, 
+## now not necessary, but kept for legacy
+# ## Set all VOCs to 0 before key date
+# zeroDate <- as.Date("2020-12-15")
+# ii <- which(pred$date1 < zeroDate)
+# theVOCs <- c("Alpha", "Beta", "Gamma", "Delta", "Omicron")
+# 
+# z <- apply(pred[ii, theVOCs], 1, sum)
+# z
+# fac <- 0.1
+# pred[ii, theVOCs] <- fac*pred[ii, theVOCs]
+# pred[ii, "Other"] <- pred[ii, "Other"] + (1-fac)*z
+
+# Merge with case data
+predCase <- merge(pred, dat.France, by.x = "date1", by.y = "date")
+
+head(predCase)
+
+# pred <- pred0
+```
+
+# Plot
+
+```{r}
+# Rename VOCs to reorder columns
+# For proportions
+dicc.props <- c("1_Omicron", "2_Delta", "3_Gamma", "4_Beta", "5_Alpha", "6_Unknown", "7_Other")
+names(dicc.props) <- c("Omicron", "Delta", "Gamma", "Beta", "Alpha", "Unknown", "Other")
+
+# For cases
+dicc.cases <- c("7_Omicron", "6_Delta", "5_Gamma", "4_Beta", "3_Alpha", "2_Unknown", "1_Other")
+names(dicc.cases) <- names(dicc.props)
+dicc.cases <- dicc.cases[order(dicc.cases)]
+```
+
+```{r}
+plotVariants <- function(country, type = "proportions", withOther = FALSE, ymax = 0){
+  
+  # Subset of the data
+  subdat.gisaid <- dat.gisaid[which(dat.gisaid$country == country), ]
+  subdat.cases <- cas.ECDC[which(cas.ECDC$countriesAndTerritories == country), ]
+  
+  # Population size
+  pop <- unique(subdat.cases$popData2020)
+  pop <- pop[!is.na(pop)]
+  print(pop)
+  
+  ### CASE DATA
+  # Add potentially missing dates
+  dates.df <- data.frame(date = seq(min(subdat.cases$date), max(subdat.cases$date), by = "day"))
+  subdat.cases <- merge(subdat.cases, dates.df, by = "date", all = TRUE)
+  # Check order
+  subdat.cases <- subdat.cases[order(subdat.cases$date), ]
+  
+  # Compute 7-d averages for cases
+  subdat.cases$cases.7J <- sliding.window(subdat.cases$cases)
+  subdat.cases$cases.sum7J <- 7 * subdat.cases$cases.7J
+  
+  # indices of non-NA values (spline only possible on non-NA)
+  inona <- which(!is.na(subdat.cases$cases.7J))#4:(nrow(subdat.cases)-3)
+  
+  
+  # Smoothen the data
+  column <- "cases.7J"
+  tmp <- smooth.spline(as.numeric(as.Date(subdat.cases[inona, ]$date) - as.Date(min(subdat.cases$date))), subdat.cases[inona, column], 
+                     spar = 0.2)
+  tmp.df <- data.frame(date = as.Date(tmp$x + min(subdat.cases$date)), cases.smoothed = tmp$y)
+  # Add smoothed data to dataset
+  subdat.cases <- merge(subdat.cases, tmp.df, by = "date")
+#  subdat.cases$cases.smoothed <- c(rep(NA, 3), tmp$y, rep(NA, 3))
+  
+  ### VARIANT DATA  
+  # Aggregate variant data
+  
+  ####
+  # 1) with "Other"
+  ####
+  aggVOC <- aggregate(subdat.gisaid$number_detections_variant, by = list(date1 = subdat.gisaid$date1, VOC = subdat.gisaid$VOC), FUN = sum)
+
+  # Add Sample sizes
+  aggSam <- aggregate(aggVOC$x, by = list(date1 = aggVOC$date1), FUN = sum)
+  names(aggSam)[2] <- "tot"
+  aggVOC <- merge(aggVOC, aggSam, by = "date1")
+  # Compute proportions of the variants
+  aggVOC$prop <- aggVOC$x / aggVOC$tot
+
+  # Add case data (ECDC)
+  aggVOC <- merge(aggVOC, subdat.cases, by.x = "date1", by.y = "date")
+
+  ####
+  # 2) Without "Other"
+  ####
+  aggVOC.noOther <- aggVOC[which(aggVOC$VOC != "Unknown"), c("date1", "VOC", "x")]
+  
+  # Sample sizes
+  tmp <- aggregate(aggVOC.noOther$x, by = list(date1 = aggVOC.noOther$date1), FUN = sum)
+  names(tmp)[2] <- "tot"
+  aggVOC.noOther <- merge(aggVOC.noOther, tmp, by = "date1")
+  aggVOC.noOther$prop <- aggVOC.noOther$x / aggVOC.noOther$tot
+
+  # Add case data (ECDC)
+  aggVOC.noOther <- merge(aggVOC.noOther, subdat.cases, by.x = "date1", by.y = "date")
+
+  
+  ## Plot proportions
+  # Rename columns - latest variants first, because we want them at the bottom of the plot
+  aggVOC$VOC2 <- dicc.props[aggVOC$VOC]
+  aggVOC.noOther$VOC2 <- dicc.props[aggVOC.noOther$VOC]
+
+  aggVOC$VOC3 <- dicc.cases[aggVOC$VOC]
+  aggVOC.noOther$VOC3 <- dicc.cases[aggVOC.noOther$VOC]
+
+  # Get colors in the right order
+  cc.props <- vapply(names(dicc.props), function(i) get(paste0("col", i)), FUN.VALUE = "x") 
+  cc.cases <- vapply(names(dicc.cases), function(i) get(paste0("col", i)), FUN.VALUE = "x") 
+  
+  if(withOther){
+    ii <- seq_len(length(cc))
+    agg <- aggVOC
+  }else{
+    ii.props <- which(names(cc.props)!= "Unknown")
+    ii.cases <- which(names(cc.cases)!= "Unknown")
+    agg <- aggVOC.noOther
+  }
+  
+  agg[is.na(agg$prop), "prop"] <- 0
+
+  opar <- par(lwd = 0.01)
+  
+  agg$n <- agg$prop * agg$cases.sum7J
+
+  # Standardize 
+  std <- 1 / pop * 10^5
+  agg$n <- agg$n * std
+
+  if(type == "proportions"){
+    bp <- barplot(agg$prop ~ agg$VOC2 + agg$date1, col = cc.props[ii.props], border = "gray", 
+                  axes = FALSE, names.arg = rep("", length(unique(agg$date1))), 
+                  xlab = "", ylab = "")
+  }
+  
+  if(type == "cases"){
+    if(ymax == 0){
+      ymax <- 1.1 * max(agg$n, na.rm = TRUE)
+    }
+    bp <- barplot(agg$n ~ agg$VOC3 + agg$date1, col = cc.cases[ii.cases], border = "gray", 
+                  axes = FALSE, names.arg = rep("", length(unique(agg$date1))), 
+                  xlab = "", ylab = "", 
+                  ylim = c(0, ymax))
+    
+  }
+  
+  axis(2, pos = bp[1] - (bp[2] - bp[1])/2, lwd = 0, lwd.ticks = 1, las = 1)
+
+  dates <- sort(unique(agg$date1)) # Dates in the data
+  cf <- coefficients(lm(bp ~ as.numeric(dates))) # get their x positions from a linear model
+  datePosition <- function(date){
+    cf[1] + as.numeric(date) * cf[2]
+  }
+  # Position months
+  months <- seq(as.Date("2020-10-01"), Sys.Date(), by = "month")
+  
+  par(xpd = TRUE)
+  text(datePosition(months), rep(0, length(months)), labels = format.Date(months, "%b\n%Y"), adj = c(0.5, 1.5), cex = 0.8)
+  
+  axis(1, at = datePosition(months), labels = rep("", length(months)), pos = 0)
+  
+  title(main = country)
+  
+  if(type == "cases"){
+    # Add daily cases
+    subdat.cases <- subdat.cases[subdat.cases$date >= min(subdat.gisaid$date1), ]
+    lines(datePosition(subdat.cases$date), 7* subdat.cases$cases.smoothed * std, lwd = 2)
+  }
+  
+  legend("topleft", pch = 15, col = cc.cases[ii.cases], legend = names(cc.cases[ii.cases]), inset = c(0.05, 0))
+  
+  # Credits
+mtext(paste0("@flodebarre, ", Sys.Date(), "
+Data: GISAID via ECDC, https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv
+Code: https://github.com/flodebarre/gisaidCovid_public/blob/main/variantWavesECDC.Rmd"), family = "mono", cex = 0.5, side = 1, line = 3, col = gray(0.3), adj = 0)
+
+mtext(side = 3, text = "Weekly cases per 100'000 inhabitants", line = -0.5, cex = 0.8)
+
+  
+}
+
+#plotVariants("France")
+
+#plotVariants("France", type = "cases")
+layout(1)
+plotVariants("Germany", type = "cases", ymax = 2000)
+```
+
+
+
+
+```{r}
+layout(matrix(1:16, ncol = 4))
+par(mar = c(4, 3, 2, 1))
+```
+
+
+```{r individualPlots, fig.width=7, fig.height=5}
+layout(1)
+
+tp <- "cases"
+yM <- 4000
+par(mar = c(4, 3, 2, 1))
+
+for(ctr in unique(dat.gisaid$country)){
+  plotVariants(ctr, type = tp, ymax = 0)
+}
+
+```
+ 
+ 
