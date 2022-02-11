@@ -522,7 +522,7 @@ plotVariants <- function(country, type = "proportions", withOther = FALSE, ymax 
   
   if(type == "cases"){
     if(ymax == 0){
-      ymax <- 1.1 * max(agg$n, na.rm = TRUE)
+      ymax <- 1.1 * max(agg$cases.sum7J * std, na.rm = TRUE)
     }
     bp <- barplot(agg$n ~ agg$VOC3 + agg$date1, col = cc.cases[ii.cases], border = "gray", 
                   axes = FALSE, names.arg = rep("", length(unique(agg$date1))), 
@@ -554,7 +554,7 @@ plotVariants <- function(country, type = "proportions", withOther = FALSE, ymax 
     lines(datePosition(subdat.cases$date), 7* subdat.cases$cases.smoothed * std, lwd = 2)
   }
   
-  legend("topleft", pch = 15, col = cc.cases[ii.cases], legend = names(cc.cases[ii.cases]), inset = c(0.05, 0))
+  legend("topleft", pch = 15, col = cc.cases[ii.cases], legend = names(cc.cases[ii.cases]), inset = c(0.05, 0), bty = "n")
   
   # Credits
 mtext(paste0("@flodebarre, ", Sys.Date(), "
@@ -582,7 +582,7 @@ par(mar = c(4, 3, 2, 1))
 ```
 
 
-```{r individualPlots, fig.width=7, fig.height=5}
+```{r individualPlots, fig.width=7, fig.height=3.5}
 layout(1)
 
 tp <- "cases"
