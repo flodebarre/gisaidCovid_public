@@ -1,14 +1,8 @@
-#
-# This is the user-interface definition of a Shiny web application. You can
-# run the application by clicking 'Run App' above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
-#
+# Flo Débarre, Feb 2022
 
 library(shiny)
 
+# All countries (for drop-down list)
 ctrs <- sort(unique(dat.gisaid$country))
   
 # Define UI for application that draws a histogram
@@ -30,7 +24,6 @@ shinyUI(fluidPage(
         ) 
       ),
       
-        # Show a plot of the generated distribution
         mainPanel(
           fluidRow(
             plotOutput("variantsPlot")
@@ -42,7 +35,6 @@ shinyUI(fluidPage(
     ),
     
     fluidRow(
-      p("ablabalba")
     ),
     fluidRow(
       column(width = 6, 
@@ -52,8 +44,17 @@ shinyUI(fluidPage(
       ), 
       column(width = 6, 
              h5("Code"),
-             HTML("<p>The source code of this Shiny app is available <a href = 'https://github.com/flodebarre/covid_vaccination/tree/main/ecdc-vaccination'>on Github</a>. You are welcome to check it and to <a href = 'mailto:florence.debarre@normalesup.org?subject=ShinyApp'>let me know</a> if you find mistakes or know better ways of doing it. </p>")
+             HTML("<p>The source code of this Shiny app is available <a href = 'https://github.com/flodebarre/gisaidCovid_public/tree/main/ecdc_variants'>on Github</a>. You are welcome to check it and to <a href = 'mailto:florence.debarre@normalesup.org?subject=ShinyApp_ECDC'>let me know</a> if you find mistakes or know better ways of doing things. </p>")
       )
-    )
-)
-)
+    ), 
+    h3("Frequently Asked Questions"),
+    h5("Why cannot I find the UK?"),
+    p("The UK has left the UE and does not participate in the ECDC network anymore."),
+    h5("Why cannot I find Switzerland?"), 
+    p("Switzerland does not participate in the ECDC network."), 
+    h5("But why can I find Norway?"), 
+    HTML("As per the ECDC's <a href = 'https://www.ecdc.europa.eu/en/about-us/who-we-work/eu-partners'>own description</a>, they <i>[work] closely with the EU Member States and with the EEA countries (Norway, Iceland, and Liechtenstein).</i>"), 
+    h5("What did you use to build this app / to plot the graphs?"),
+    HTML("It is a <a href = 'https://shiny.rstudio.com/tutorial/'>Shiny app</a>, it is based on <a href = 'https://cran.r-project.org'>R code</a>. The app's source code is available <a href = 'https://github.com/flodebarre/gisaidCovid_public/tree/main/ecdc_variants'>on Github</a>."),
+    fluidRow(HTML("&nbsp;"))
+))

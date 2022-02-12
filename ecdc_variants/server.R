@@ -31,7 +31,7 @@ shinyServer(function(input, output) {
       content = function(file){
         pdf(width = 9, height = 6, file = file)
         print(
-          plotVariants(input$country, type = input$type, withOther = input$withOther, ymax = 0, palName = input$palette)
+          plotVariants(input$country, type = input$type, withOther = input$withOther, ymax = 0, palName = input$palette, minDate = input$minDate)
           )
         dev.off()
       }

@@ -179,8 +179,9 @@ plotVariants <- function(country, type = "proportions", withOther = FALSE, ymax 
   
   # Credits
   mtext(paste0("@flodebarre, ", Sys.Date(), "
-Data: GISAID via ECDC, https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv
-Code: https://github.com/flodebarre/gisaidCovid_public/blob/main/variantWavesECDC.Rmd"), family = "mono", cex = 0.5, side = 1, line = 3, col = gray(0.3), adj = 0)
+Variant Data: GISAID via ECDC, https://www.ecdc.europa.eu/en/publications-data/data-virus-variants-covid-19-eueea
+Case Data: https://www.ecdc.europa.eu/en/publications-data/data-daily-new-cases-covid-19-eueea-country
+Code: https://github.com/flodebarre/gisaidCovid_public/tree/main/ecdc_variants"), family = "mono", cex = 0.45, side = 1, line = 3, col = gray(0.3), adj = 0)
   
   if(type == "cases"){
     mtext(side = 3, text = "Weekly cases per 100'000 inhabitants", line = 0, cex = 0.8)

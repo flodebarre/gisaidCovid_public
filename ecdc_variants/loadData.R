@@ -1,3 +1,19 @@
+#### DOWNLOADS ####
+
+URL1 <- "https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv"
+download.file(URL1, 
+              destfile="../data_public/tessy.csv",
+              method="curl",
+              extra='-L')
+
+URL2 <- "https://opendata.ecdc.europa.eu/covid19/nationalcasedeath_eueea_daily_ei/csv/data.csv"
+download.file(URL2, "../data_public/ECDC_Cas.csv") 
+
+system("git add ../data_public/tessy.csv")
+system("git add ../data_public/ECDC_Cas.csv")
+system("git commit -m 'update ECDC data'")
+
+
 #### VARIANT DATA ####
 
 ###### Load ######
