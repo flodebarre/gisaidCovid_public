@@ -2,6 +2,15 @@
 
 library(shiny)
 
+# Load data
+# (obtained from `loadData.R`)
+load("data.RData")
+
+# Load functions
+source("functions.R")
+source("plotParameters.R")
+
+
 # All countries (for drop-down list)
 ctrs <- sort(unique(dat.gisaid$country))
   

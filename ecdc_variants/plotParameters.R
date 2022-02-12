@@ -72,5 +72,3 @@ getPalette <- function(palName){
        colUnknown = colUnknown)
 }
 
-
-met.brewer("Hokusai3", 5, "continuous")

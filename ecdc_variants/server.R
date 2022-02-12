@@ -7,18 +7,19 @@
 #    http://shiny.rstudio.com/
 #
 
-# Load data
-# (obtained from `loadData.R`)
-load("data.RData")
-
-# Load functions
-source("functions.R")
-source("plotParameters.R")
-
 library(shiny)
 
 # Define server logic required to draw a histogram
 shinyServer(function(input, output) {
+  
+  # Load data
+  # (obtained from `loadData.R`)
+  load("data.RData")
+  
+  # Load functions
+  source("functions.R")
+  source("plotParameters.R")
+  
   
   
     output$variantsPlot <- renderPlot({

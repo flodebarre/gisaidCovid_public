@@ -23,6 +23,9 @@ sliding.window <- function(v, winwdt = 7, pos = 4, na.rm = TRUE, FUN = mean){
 
 plotVariants <- function(country, type = "proportions", withOther = FALSE, ymax = 0, palName = "Nextstrain", minDate = "2020-10-05"){
   
+  load("data.RData")
+  
+  
   pal <- getPalette(palName)
   
   # print(country)
