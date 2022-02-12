@@ -56,6 +56,8 @@ shinyUI(fluidPage(
              HTML("<p>The source code of this Shiny app is available <a href = 'https://github.com/flodebarre/gisaidCovid_public/tree/main/ecdc_variants'>on Github</a>. You are welcome to check it and to <a href = 'mailto:florence.debarre@normalesup.org?subject=ShinyApp_ECDC'>let me know</a> if you find mistakes or know better ways of doing things. </p>")
       )
     ), 
+    h3("Credits"), 
+    HTML("The default color palette is the one used on <a href = 'https://nextstrain.org/ncov/gisaid/global'>Nextstrain</a> in Feb 2022. The palettes with names of famous painters are from the <a href = 'https://github.com/BlakeRMills/MetBrewer'>MetBrewer</a> package."), 
     h3("Frequently Asked Questions"),
     h5("Why cannot I find the UK?"),
     p("The UK has left the UE and does not participate in the ECDC network anymore."),
