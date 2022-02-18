@@ -44,12 +44,14 @@ dat.tessy <- dat.tessy.all[dat.tessy.all$source == "TESSy", ]
 
 ## GISAID 
 
-variants.gisaid <- unique(dat.gisaid$variant)
+variants.gisaid <- sort(unique(dat.gisaid$variant))
+
+variants.gisaid
 
 # vars is the unique variant names
 # This may have to be updated
 vars <- c("AT.1", 
-          "AY.4.2", 
+#          "AY.4.2", 
           "B.1.1.529", 
           "B.1.1.7", 
           "B.1.1.7+E484K", 
@@ -58,7 +60,7 @@ vars <- c("AT.1",
           "B.1.525", 
           "B.1.526",
           "B.1.616", 
-          "B.1.617", 
+#          "B.1.617", 
           "B.1.617.1", 
           "B.1.617.2", 
           "B.1.617.3", 
@@ -67,16 +69,17 @@ vars <- c("AT.1",
           "B.1.640", 
           "C.1.2", 
           "C.37", 
+          "Other",
           "P.1", 
           "P.3", 
-          "UNK", 
-          "Other")
+          "UNK")
 
 stopifnot(all(vars == variants.gisaid))
 
+print(rbind(variants.gisaid, vars))
 # Convert into OMS names
 OMS <- c("Other", 
-         "Delta", 
+#         "Delta", 
          "Omicron", 
          "Alpha", 
          "Alpha", 
@@ -85,7 +88,7 @@ OMS <- c("Other",
          "Eta", 
          "Iota",
          "Other", 
-         "Other", # B.1.617
+#         "Other", # B.1.617
          "Kappa", 
          "Delta", 
          "Other", 
@@ -94,10 +97,10 @@ OMS <- c("Other",
          "B.1.640", 
          "C.1.2", 
          "Lambda", 
+         "Other",
          "Gamma", 
          "Theta", 
-         "Unknown", 
-         "Other")
+         "Unknown")
 
 # Turn into dictionnary
 dic.OMS <- OMS
@@ -120,7 +123,7 @@ cbind(variants.tessy, is.element(variants.tessy, variants.gisaid))
 
 # More coarse description with just the VOCs and not all variants
 dic.VOCs <- c("Other", 
-              "Delta", 
+#              "Delta", 
               "Omicron", 
               "Alpha", 
               "Alpha", 
@@ -129,7 +132,7 @@ dic.VOCs <- c("Other",
               "Other", 
               "Other",
               "Other", 
-              "Other", # B.1.617
+#             "Other", # B.1.617
               "Other", 
               "Delta", 
               "Other", 
@@ -138,10 +141,10 @@ dic.VOCs <- c("Other",
               "Other", 
               "Other", 
               "Other", 
+              "Other", 
               "Gamma", 
               "Other", 
-              "Unknown", 
-              "Other")
+              "Unknown")
 names(dic.VOCs) <- vars
 dic.VOCs
 
