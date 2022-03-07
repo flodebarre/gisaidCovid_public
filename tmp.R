@@ -30,6 +30,9 @@ names(dicMainLabs) <- mainLabs
 # Subset of the data from the main labs
 sub <- dat[is.element(dat$covv_subm_lab, mainLabs), ]
 
+# Restrict to 2021-Emergen
+sub <- sub[sub$covv_subm_date >= "2021-02-01", ]
+
 sub$SubmittingLab <- dicMainLabs[sub$covv_subm_lab]
 
 table(sub$lengthCollectionDate, sub$SubmittingLab)
@@ -48,7 +51,7 @@ out <- merge(out, tmp, by = c("lab", "week"), all = TRUE)
 out[1, ]
 
 # Add missing combinations of parameters to homogenize barplots
-allparms <- expand.grid(lab = unique(out$lab), week = unique(out$week), dateFormat = unique(out$dateFormat), stringsAsFactors = FALSE)
+allparms <- expand.grid(lab = unique(out$lab), week = sort(unique(out$week)), dateFormat = unique(out$dateFormat), stringsAsFactors = FALSE)
 out <- merge(allparms, out, all = TRUE)
 
 # Proportion of each date format for each date and lab
@@ -70,7 +73,7 @@ cols <- c(gray(0.2), gray(0.5), "#77C66E")
 layout(matrix(1:4, ncol = 2))
 for(lab in unique(out$lab)){
   subout <- out[out$lab == lab, ]
-  barplot(fracSeq ~ dateFormat + weekAsDate, data = subout, border = NA, 
+  barplot(fracSeq ~ dateFormat + weekAsDate, data = subout, border = gray(0.9), lwd = 0.5,
           xlab = "Submission week", ylab = "Proportions of date formats ", main = lab, 
           col = cols)
   par(xpd = TRUE)
