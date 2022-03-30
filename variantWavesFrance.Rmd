@@ -223,11 +223,92 @@ dat.France$Psmoothed <- c(rep(NA, 3), tmp$y, rep(NA, 3))
 
 ```
 
+## Epidemiological data, ECDC
+
+source <https://www.ecdc.europa.eu/en/publications-data/data-daily-new-cases-covid-19-eueea-country>
+
+```{r}
+URL <- "https://opendata.ecdc.europa.eu/covid19/nationalcasedeath_eueea_daily_ei/csv/data.csv"
+
+dataFile <- paste0("data_public/ECDC_Cas.csv") # name file with today's date
+if(dlData){
+  download.file(URL, dataFile) # download file
+  system("git add data_public/ECDC_Cas.csv; git commit -m 'update ecdc case data'")
+}
+
+cas.ECDC <- read.csv(dataFile, na.strings = "", fileEncoding = "UTF-8-BOM") # As suggested on the ECDC webpage
+
+head(cas.ECDC)
+
+# Format data
+# Date
+cas.ECDC$date <- as.Date(cas.ECDC$dateRep, format = "%d/%m/%Y")
+#data.frame(cas.ECDC$date, cas.ECDC$dateRep) # Check
+
+
+head(cas.ECDC)
+
+# Ignore corrections
+cas.ECDC[which(cas.ECDC$cases < 0), "cases"] <- NA
+
+cas.ECDC.FR <- cas.ECDC[which(cas.ECDC$countriesAndTerritories == "France"), ]
+
+par(lwd = 1)
+plot(cas.ECDC.FR$date, cas.ECDC.FR$cases)
+
+# Sort by date
+cas.ECDC.FR <- cas.ECDC.FR[order(cas.ECDC.FR$date), ]
+
+# Make sure dates are consecutive
+stopifnot(all(diff(cas.ECDC.FR$date) == 1))
+cas.ECDC.FR$cases7J <- sliding.window(cas.ECDC.FR$cases)
+
+plot(cas.ECDC.FR$date, cas.ECDC.FR$cases7J)
+
+# Smoothen the data
+inona <- 4:(nrow(cas.ECDC.FR)-3)
+
+# spar parameter controls the level of smoothing
+tmp <- smooth.spline(as.numeric(as.Date(cas.ECDC.FR[inona, ]$date) - as.Date(min(cas.ECDC.FR$date))), cas.ECDC.FR[inona,]$cases7J, 
+                     spar = 0.2)
+
+cas.ECDC.FR$Psmoothed <- c(rep(NA, 3), tmp$y, rep(NA, 3))
+
+lines(cas.ECDC.FR$date, cas.ECDC.FR$Psmoothed, col = 2)
+```
+
 # Analyse
 
 ```{r}
 # Aggregate data by VOC for each date
 aggVOC <- aggregate(dat.gisaid.FR$number_detections_variant, by = list(date1 = dat.gisaid.FR$date1, VOC = dat.gisaid.FR$VOC), FUN = sum)
+
+# Sample sizes
+aggSam <- aggregate(aggVOC$x, by = list(date1 = aggVOC$date1), FUN = sum)
+names(aggSam)[2] <- "tot"
+
+aggVOC <- merge(aggVOC, aggSam, by = "date1")
+
+aggVOC$prop <- aggVOC$x / aggVOC$tot
+
+# Add case data (ECDC)
+tmp <- merge(aggVOC, cas.ECDC.FR, by.x = "date1", by.y = "date")
+tmp$cases.sum7J <- 7 * tmp$cases7J
+aggVOC <- tmp
+
+#--------------------------
+# Version without Unknown
+aggVOC2 <- aggVOC[which(aggVOC$VOC != "Unknown"), c("date1", "VOC", "x")]
+tmp <- aggregate(aggVOC2$x, by = list(date1 = aggVOC2$date1), FUN = sum)
+names(tmp)[2] <- "tot"
+aggVOC2 <- merge(aggVOC2, tmp, by = "date1")
+aggVOC2$p <- aggVOC2$x / aggVOC2$tot
+
+# Add case data (ECDC)
+tmp <- merge(aggVOC2, cas.ECDC.FR, by.x = "date1", by.y = "date")
+tmp$cases.sum7J <- 7 * tmp$cases7J
+aggVOC2 <- tmp
+
 
 # Check data format
 # Make sure that all variants are listed at all dates
@@ -326,9 +407,47 @@ colOmicron <- "#f55c30"
 
 ```
 
-## Proportions
+## Proportions, raw
+
+
+```{r proportionsRaw}
+# Rename VOCs to reorder columns
+dicc <- c("1_Omicron", "2_Delta", "3_Gamma", "4_Beta", "5_Alpha", "6_Unknown", "7_Other")
+names(dicc) <- c("Omicron", "Delta", "Gamma", "Beta", "Alpha", "Unknown", "Other")
+
+dicc2 <- c("7_Omicron", "6_Delta", "5_Gamma", "4_Beta", "3_Alpha", "2_Unknown", "1_Other")
+names(dicc2) <- names(dicc)
+
+aggVOC$VOC2 <- dicc[aggVOC$VOC]
+aggVOC2$VOC2 <- dicc[aggVOC2$VOC]
+
+aggVOC$VOC3 <- dicc2[aggVOC$VOC]
+aggVOC2$VOC3 <- dicc2[aggVOC2$VOC]
+
+?barplot
+barplot(aggVOC$prop ~ aggVOC$VOC2 + aggVOC$date1, col = 1:7)
+
+cc <- vapply(names(dicc), function(i) get(paste0("col", i)), FUN.VALUE = "x")
+ii <- which(names(cc)!= "Unknown")
+
+opar <- par(lwd = 0.01)
+
+barplot(aggVOC2$prop ~ aggVOC2$VOC2 + aggVOC2$date1, col = cc[ii], border = "gray")
+
+aggVOC$VOC
+```
+
+
+## Proportions, multinom fit
 
 ```{r plotProps, fig.width=8, fig.height=4.5}
+
+# Save pred
+opred <- pred
+
+names(pred)
+
+pred <- pred[, c("timeSinceFirstDate", "date1", "Omicron", "Delta", "Gamma", "Beta", "Alpha", "Other", "Unknown")]
 
 # Initialize plot
 par(las = 1)
@@ -389,15 +508,39 @@ title(main = "SARS-CoV-2 variants in France")
 mtext(paste0("@flodebarre, after @firefoxx66, ", Sys.Date(), "
 Data: GISAID via ECDC, https://opendata.ecdc.europa.eu/covid19/virusvariant/csv/data.csv
 Code: https://github.com/flodebarre/gisaidCovid_public/blob/main/variantWavesFrance.Rmd"), family = "mono", cex = 0.5, side = 1, line = 2.5, col = gray(0.3), adj = 0)
+
+pred <- opred
+```
+
+
+## Abundances, raw
+
+```{r abundancesRaw}
+aggVOC$n <- aggVOC$prop * aggVOC$cases.sum7J
+
+barplot(aggVOC$n ~ aggVOC$VOC2 + aggVOC$date1, col = 1:7)
+
+opar <- par(lwd = 0.01)
+
+cc2 <- vapply(sort(dicc2), function(i) get(paste0("col", substr(i, 3, nchar(i)))), FUN.VALUE = "x")
+ii2 <- which(names(cc2)!= "Unknown")
+
+aggVOC2$date <- as.Date(aggVOC2$date1)
+
+aggVOC2$n <- aggVOC2$p * aggVOC2$cases.sum7J
+
+barplot(aggVOC2$n ~ aggVOC2$VOC3 + aggVOC2$date, col = cc2[ii2], border = "gray")
+
+aggVOC$VOC
 ```
 
 ## Abundances
 
-```{r plotAbundances, fig.width=8, fig.height=8}
+```{r plotAbundances, fig.width=16, fig.height=9}
 
 # Initialize plot
 par(las = 1)
-par(mar = c(4, 2, 2, 5), mgp = c(2.5, 0.5, 0), tck = - 0.01)
+par(mar = c(4, 2.5, 2, 5), mgp = c(2.5, 0.5, 0), tck = - 0.01)
 
 xx <- as.Date(predCase$date1)
 plot(xx, 
@@ -446,7 +589,7 @@ for(j in jvals){
 
 # Legend
 par(xpd = TRUE)
-legend("right", inset=c(-0.125,0), 
+legend("right", inset=c(-0.05,0), 
        legend = rev(paste0(names(predCase)[jvals])), 
        pch = 15, 
        col = rev(vapply(jvals, function(j) get(paste0("col", names(predCase)[j])), FUN.VALUE = "x")), pt.cex = 2, bty = "n",)
