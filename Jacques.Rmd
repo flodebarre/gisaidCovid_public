@@ -1,0 +1,69 @@
+---
+title: "Pour JvH"
+output:
+  html_document:
+    df_print: paged
+    keep_md: TRUE
+editor_options:
+  chunk_output_type: console
+---
+
+# Load and clean data
+
+```{r}
+thedate <- "2022-05-02"
+dat <- read.csv(paste0("data/", thedate, "_", "France.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+
+# Load data DROM
+dat2 <- read.csv(paste0("data/", thedate, "_", "Martinique.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+dat3 <- read.csv(paste0("data/", thedate, "_", "Guadeloupe.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
+
+# Add column to distinguish metro from DROM
+dat$metropole <- TRUE
+dat2$metropole <- FALSE
+dat3$metropole <- FALSE
+
+# Join the datasets
+dat <- rbind(dat, dat2, dat3)
+
+# Add names 
+# (names are not in the datafiles because "grep" was used to extract data)
+names(dat) <- c("Virus.name", "Type", "Accession.ID", "Collection.date", "Location", "Additional.location.information", "Sequence.length", "Host", "Patient.age", "Gender", "Clade", "Pango.lineage", "Pangolin.version", "Variant", "AA.Substitutions", "Submission.date", "Is.reference", "Is.complete", "Is.high.coverage", "Is.low.coverage", "N.Content", "GC.Content")
+
+```
+
+```{r}
+# Reformat dates
+source("funcs_cleanDates.R")
+
+# Full date
+dat$Collection.date.YMD <- getDate(dat$Collection.date)
+dat$Submission.date.YMD <- getDate(dat$Submission.date)
+
+# Year-Month
+dat$Collection.date.YM <- getYM(dat$Collection.date)
+dat$Submission.date.YM <- getYM(dat$Submission.date)
+
+# Year only
+dat$Collection.date.Y <- getY(dat$Collection.date)
+dat$Submission.date.Y <- getY(dat$Submission.date)
+
+# Week
+dat$Collection.date.Wk <- getWk(dat$Collection.date.YMD)
+dat$Submission.date.Wk <- getWk(dat$Submission.date.YMD)
+```
+
+```{r}
+tbS <- table(dat$Submission.date.YM)
+tbS
+
+tbC <- table(dat$Collection.date.YM)
+tbC
+
+table(dat$Collection.date.Wk)
+
+table(dat$Submission.date.Wk)
+```
+
+Submissions in 2022: `r sum(dat$Submission.date.Y >= 2022)`  
+Submissions since 2022-03-15: `r sum(dat$Submission.date.YMD >= "2022-03-15")`
