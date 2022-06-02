@@ -38,6 +38,9 @@ names(colsP) <- c("autre", "HCL", "HMN", "IHU", "IPP")
 colsC <- c(brewer.pal(9, "Set1"), brewer.pal(6, "Set2"), brewer.pal(12, "Set3"))
 colsV2 <- brewer.pal(9, "Set3")
 
+pchsP <- c(15, 16, 17, 19, 15)
+names(pchsP) <- names(colsP)
+
 colGISAID <- "#106b63"
 colECDC <- "#69b023"
 colSPF <- "#e30155"
@@ -89,7 +92,7 @@ UPDATE: run (private data/ folder)
 ## Load data
 
 ```{r loadData, results = 'hide'}
-thedate <- ""
+thedate <- "2022-05-02_"
 # Load France data
 dat <- read.csv(paste0("data/", thedate, "France.tsv"), sep = "\t", stringsAsFactors = FALSE, header = FALSE)
 
@@ -156,7 +159,12 @@ getY <- function(v){
 
 dat$Collection.date.Y <- getY(dat$Collection.date)
 dat$Submission.date.Y <- getY(dat$Submission.date)
+
+
 ```
+
+Collection date range: `range(dat$Collection.date.YMD, na.rm = TRUE)`  
+Submission date range: `range(dat$Submission.date.YMD, na.rm = TRUE)`  
 
 Dates: get week numbers  
 (currently only done for 2021)
@@ -258,7 +266,12 @@ dat$oldRegion <- dat$region
 dat$region <- dic.regnames[dat$oldRegion]
 
 regions <- sort(unique(dat$region))
+oldregions <- sort(unique(dat$oldRegion))
 
+tb <- table(dat$oldRegion)
+tbPACA <- tb[substr(names(tb), 1, 4) == "Prov"]
+tbPACA 
+length(tbPACA)
 # Note: For DROM, information is in Country instead
 ```
 
@@ -283,7 +296,8 @@ dat$VariantShort <- dat$Variant
 variants <- sort(unique(dat$Variant))
 
 # Short versions of the names
-variantsShort <- c("", "Alpha", "Beta", "Delta", "Gamma", "Lambda", "Mu")
+variantsShort <- c("", "Alpha", "Beta", "Delta", "Gamma", "Omicron",
+                   "Epsilon", "Eta", "Iota", "Kappa", "Lambda", "Mu", "Zeta", "B.1.640*")
 
 # Check consistency
 cbind(variants, variantsShort)
@@ -414,11 +428,24 @@ Check completeness of the different fields
 
 Distribution of samples with incomplete collection date information, by submitter  
 ```{r}
-totSeq <- table(dat$submitter)
-tt <- table(dat[which(is.na(dat$Collection.date.YMD)), "submitter"])
+computeIncompleteDates <- function(dat){
+  totSeq <- table(dat$submitter)
+  tt <- table(dat[which(is.na(dat$Collection.date.YMD)), "submitter"])
+  
+  tmp <- rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
+  return(rbind(tmp, prop_incomplete_collectionDate = round(tmp[1, ]/tmp[2, ], 4)))
+}
 
-tmp <- rbind(incomplete_collectionDate = tt, tot_seq = totSeq[names(tt)])
-rbind(tmp, prop_incomplete_collectionDate = round(tmp[1, ]/tmp[2, ], 4))
+# All dates
+computeIncompleteDates(dat)
+
+# For specific time interval 
+computeIncompleteDates(dat[which(dat$Submission.date.Y == "2022"), ])
+
+# Problem date
+ii <- which(as.character(dat$Collection.date.YM) == "2021-1-")
+dat[ii, "Virus.name"]
+dat$Collection.date.YM[ii] <- NA
 ```
 
 ### Location 
@@ -467,6 +494,8 @@ Distribution of ages
 par(las = 1)
 range(dat$Patient.age, na.rm = TRUE)
 dat[which(dat$Patient.age >120), "Patient.age"] <- NA
+dat[which(dat$Patient.age <0), "Patient.age"] <- NA
+
 hist(dat$Patient.age, xlab = "Patient age", main = "Distribution of patient ages", breaks = seq(0, max(dat$Patient.age, na.rm = TRUE), by = 1), border = gray(1, 1), col = cols[1])
 ```
 
@@ -477,6 +506,7 @@ Odd ages
 Who submitted data with this age?
 ```{r}
 table(dat[which(dat$Patient.age == 119), "submitter"])
+table(dat[which(dat$Patient.age == 120), "submitter"])
 ```
 
 When were they submitted?
@@ -534,6 +564,79 @@ Pangolin version
 table(dat$Pangolin.version)
 ```
 
+## Sequence quality - Proportion N
+
+-  Mean proportion of N over time (months), by platform
+
+```{r}
+head(dat)
+
+tabFR.N_mean <- aggregate(dat$N.Content, by = list(subID = dat$submitter, subM = dat$Collection.date.YM), FUN = mean, na.rm = TRUE)
+names(tabFR.N_mean)[3] <- "mean"
+
+tabFR.N_var <- aggregate(dat$N.Content, by = list(subID = dat$submitter, subM = dat$Collection.date.YM), FUN = var, na.rm = TRUE)
+names(tabFR.N_var)[3] <- "var"
+
+tabFR.N_n <- aggregate(dat$N.Content, by = list(subID = dat$submitter, subM = dat$Collection.date.YM), FUN = length)
+names(tabFR.N_n)[3] <- "n"
+
+# Merge them into a single table
+tabFR.N <- Reduce(function(x, y) merge(x, y, all = TRUE), list(tabFR.N_mean, tabFR.N_var, tabFR.N_n))  
+# Subset for values >= 2021
+tabFR.N <- tabFR.N[tabFR.N$subM >= "2021-01", ]
+
+layout(1)
+par(mgp = c(2.5, 0.5, 0), cex.axis = 1)
+plot(as.Date(paste0(tabFR.N$subM, "-01"), "%Y-%m-%d"), tabFR.N$mean, col = colsP[tabFR.N$subID], 
+     xlab = "Collection month", ylab = "Moyenne Proportion N", yaxs = "i", pch = pchsP[tabFR.N$subID], 
+     frame.plot = FALSE, 
+     ylim = c(0, 0.1), axes = FALSE, 
+     cex = 1.2)
+for(i in seq(0, 0.1, 0.01)) abline(h = i, col = gray(0.5))
+legend("top", col = colsP, pch = pchsP, legend = names(colsP), horiz = TRUE)
+mnths <- seq(as.Date("2021-01-01"), Sys.Date(), by = "month")
+axis(1, at = mnths, labels = format(mnths, "%Y-%m"), cex.axis = 0.8)
+axis(2)
+
+for(submitter in unique(tabFR.N$subID)){
+  sub <- tabFR.N[tabFR.N$subID == submitter, ]
+  arrows(x0 = as.Date(paste0(sub$subM, "-01"), "%Y-%m-%d"), 
+         x1 = as.Date(paste0(sub$subM, "-01"), "%Y-%m-%d"), 
+         y0 = sub$mean - 1.96 * sqrt(sub$var / sub$n), 
+         y1 = sub$mean + 1.96 * sqrt(sub$var / sub$n),
+         code = 0, col = colsP[submitter])
+}
+
+```
+
+
+-  Distribution proportion N
+
+```{r}
+minMonth <- "2022-01"
+maxMonth <- max(dat$Collection.date.YM, na.rm = TRUE)
+sub <- dat[dat$Collection.date.YM >= minMonth & dat$Collection.date.YM <= maxMonth, ]
+
+# Initialize plot
+xmax <- 0.5
+ymax <- 700
+par(las = 1)
+#plot(0, type = "n", xlim = c(0, xmax), ylim = c(0, ymax), 
+#     xlab = "N content", ylab = "Density", frame.plot = FALSE, yaxs = "i")
+layout(matrix(1:5, ncol = 1))
+for(submitter in c("IPP", "HCL", "HMN", "IHU", "autre")){
+  subb <- sub[sub$submitter == submitter, ]
+  subb[which(subb$N.Content >= 0.5), "N.Content"] <- 0.5
+  hh <- hist(subb$N.Content, breaks = seq(0, xmax, by = 0.0025), freq = TRUE, 
+             main = paste0(submitter, " (", minMonth, "--", maxMonth, ")"), 
+             plot = TRUE, col = colsP[submitter], xlab = "Proportion N", axes = FALSE)
+  axis(2)
+  axis(1, at = c(seq(0, 0.2, by = 0.01), seq(0.2, xmax, by = 0.1)), lwd = 0, lwd.ticks = 1)
+  }
+max(sub$N.Content, na.rm = TRUE)
+```
+
+
 # Submissions and metadata quality
 
 ## Submissions by Platform
@@ -562,14 +665,14 @@ By platform, by week
 
 ```{r, fig.height=10}
 # By collection week
-tabFRsub.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subweek = dat$Collection.week), FUN = length)
+tabFRsub.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subweek = dat$Collection.Ywk), FUN = length)
 names(tabFRsub.byweek)[3] <- "byCollectionDate"
 
-tabFRsubS.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subweek = dat$Submission.week), FUN = length)
+tabFRsubS.byweek <- aggregate(dat$Virus.name, by = list(subID = dat$submitter, subweek = dat$Submission.Ywk), FUN = length)
 names(tabFRsubS.byweek)[3] <- "bySubmissionDate"
 
 seq.byWeek <- merge(tabFRsub.byweek, tabFRsubS.byweek, all = TRUE)
-ymax <- 10000
+ymax <- 20000
 
 seq.byWeek[is.na(seq.byWeek$byCollectionDate), "byCollectionDate"] <- 0
 seq.byWeek[is.na(seq.byWeek$bySubmissionDate), "bySubmissionDate"] <- 0
@@ -608,7 +711,7 @@ mtext("Semaine de soumission", side = 1, line = 1.25)
 
 ```{r}
 dat2 <- dat[order(dat$Collection.date.YMD), ]
-dat2 <- dat2[dat2$Collection.date.Y == 2021,]
+dat2 <- dat2[dat2$Collection.date.Y >= 2021,]
 
 # Add phantom lab with all days
 alldates <- seq(as.Date("2021-01-01"), as.Date(max(dat2$Collection.date.YMD, na.rm = TRUE)), by = "day")
@@ -632,6 +735,8 @@ Specific histograms here because there have been date issues, and they can be ea
 ```{r}
 # All sequences
 subIHU <- dat[dat$submitter == "IHU", ]
+
+max(subIHU$Collection.date)
 ```
 
 
@@ -810,7 +915,7 @@ is.data.frame(tb)
 names(tb)
 head(tb)
 row.names(tb)
-col.names(tb)
+#col.names(tb)
 
 
 ```
@@ -1300,7 +1405,12 @@ aa <- strsplit(tmp, ",")
 
 ```{r}
 # Extract information on whether the S:L452R is present as aa substitution in the sequence
-i.L452R <- sapply(aa, function(x){(is.element("Spike_L452R", x))})
+
+# Add condition on sequence length
+thrNN <- 0.005 # Max proportion of NN allowed
+i.notNN <- (dat$N.Content <= thrNN)
+
+i.L452R <- sapply(aa[i.notNN], function(x){(is.element("Spike_L452R", x))})
 
 i.Delta <- (dat$VariantShort == "Delta")
 i.Delta[is.na(i.Delta)] <- FALSE
@@ -1311,9 +1421,9 @@ Overall, fraction of all sequences with the L452R mutation: `r mean(i.L452R)`.
 ```{r}
 # Aggregate the data by week of collection
 # Proportion of sequences with L452R that week
-tmp.mean <- aggregate(i.L452R, by = list(week = dat$Collection.week), FUN = mean)
+tmp.mean <- aggregate(i.L452R, by = list(week = dat[i.notNN, ]$Collection.week), FUN = mean)
 # Number of sequences that week
-tmp.n <- aggregate(i.L452R, by = list(week = dat$Collection.week), FUN = length)
+tmp.n <- aggregate(i.L452R, by = list(week = dat[i.notNN, ]$Collection.week), FUN = length)
 # Merge and name
 L452R.byweek <- merge(tmp.mean, tmp.n, by = "week")
 names(L452R.byweek) <- c("week", "p", "n")
@@ -1368,9 +1478,9 @@ par(las = 1, mar = mar1,
 layout(matrix(1:2, nrow = 2), heights = c(5, 1))
 cexx <- 1.
 plot(L452R.byweek$week, L452R.byweek$p, xlim = range(dat.France$week, na.rm = TRUE) + c(-1, 0), 
-     xlab = "Semaine de collecte", ylab = "Proportion Delta ou L452R", ylim = c(0, 1), 
-     frame.plot = FALSE, yaxs = "i", col = cols["GISAID"], pch = 16, main = "Proportion de Delta et identification de L452R, 
-séquençage et criblage", 
+     xlab = "Collection week", ylab = "Proportion Delta or L452R", ylim = c(0, 1), 
+     frame.plot = FALSE, yaxs = "i", col = cols["GISAID"], pch = 16, main = "Proportion of Delta and of L452R,  
+sequencing and genotyping", 
 cex = cexx)
 axis(4)
 
@@ -1398,15 +1508,15 @@ arrows(x0 = dat.France$week, y0 = dat.France$tx_C1/100 + dat.France$deltaCI_C1,
        x1 = dat.France$week, y1 = dat.France$tx_C1/100 - dat.France$deltaCI_C1, 
        code = 3, angle = 90, length = lgt, col = cols["criblage"])
 
-legend("bottomright", col = cols[c("GISAID2", "GISAID",  "criblage")], legend = c("Delta dans les séquences GISAID", "L452R dans les séquences GISAID", "L452R dans le criblage"), pch = c(17, 16, 15), bty = "n")
+legend("bottomright", col = cols[c("GISAID2", "GISAID",  "criblage")], legend = c("Delta in GISAID sequences", "L452R in GISAID sequences", "L452R in PCR genotyping"), pch = c(17, 16, 15), bty = "n")
 
 par(xpd = TRUE)
 #text(datesFlash[which(datesFlash$week >= min(dat.France$week, na.rm = TRUE) -1), "week"], -0.125, "*")
 
 par(mar = c(0, mar1[2], 0, mar1[4]))
 
-plot(L452R.byweek$week, -L452R.byweek$n, axes = FALSE, type = "h", ylab = "Nb de séqs", xlab = "")
-vals <- pretty(seq(0, max(L452R.byweek$n), by = 2000))
+plot(L452R.byweek$week, -L452R.byweek$n, axes = FALSE, type = "h", ylab = "Nb of seqs", xlab = "")
+vals <- pretty(seq(0, max(L452R.byweek$n), by = 1000))
 axis(2, at = -vals, labels = vals, lwd = 0, lwd.ticks = 1)
 axis(4, at = -vals, labels = vals, lwd = 0, lwd.ticks = 1)
 #mtext(side = 3, text = "Nombre de séquences")
